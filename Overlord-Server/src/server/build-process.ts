@@ -9,6 +9,30 @@ import type { BuildStream } from "../build/types";
 import { ALLOWED_PLATFORMS } from "./validation-constants";
 import { resolveRuntimeRoot } from "./runtime-paths";
 
+function isClientModuleDir(dir: string): boolean {
+  return (
+    fs.existsSync(path.join(dir, "go.mod")) &&
+    fs.existsSync(path.join(dir, "cmd", "agent"))
+  );
+}
+
+function resolveClientModuleDir(rootDir: string): string | null {
+  const candidates = [
+    path.join(rootDir, "dist", "Overlord-Client"),
+    path.join(rootDir, "dist", "Overlord-Client", "Overlord-Client"),
+    path.join(rootDir, "Overlord-Client"),
+    path.join(rootDir, "..", "Overlord-Client"),
+  ];
+
+  for (const dir of candidates) {
+    if (isClientModuleDir(dir)) {
+      return dir;
+    }
+  }
+
+  return null;
+}
+
 type BuildProcessConfig = {
   platforms: string[];
   serverUrl?: string;
@@ -102,14 +126,17 @@ export async function startBuildProcess(
     }
 
     const rootDir = resolveRuntimeRoot();
-    const distClientDir = path.join(rootDir, "dist", "Overlord-Client");
-    const clientDir = fs.existsSync(distClientDir)
-      ? distClientDir
-      : path.join(rootDir, "Overlord-Client");
+    const clientDir = resolveClientModuleDir(rootDir);
+    if (!clientDir) {
+      throw new Error(
+        `Overlord-Client source not found (missing go.mod). Checked: ${path.join(rootDir, "dist", "Overlord-Client")}, ${path.join(rootDir, "Overlord-Client")}`,
+      );
+    }
     const outDir = path.join(rootDir, "dist-clients");
 
     await Bun.$`mkdir -p ${outDir}`.quiet();
     sendToStream({ type: "output", text: `Build directory: ${outDir}\n`, level: "info" });
+    sendToStream({ type: "output", text: `Client source: ${clientDir}\n`, level: "info" });
 
     const platformsToBuild = (config.platforms || []).filter((p) => ALLOWED_PLATFORMS.has(p));
     if (platformsToBuild.length !== (config.platforms || []).length) {

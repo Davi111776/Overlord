@@ -26,7 +26,11 @@ echo "[build] compiling Linux production executable..."
 echo "[build] copying Overlord-Client source for runtime builds..."
 mkdir -p "$SERVER_DIR/dist/Overlord-Client"
 rsync -a --exclude='build' --exclude='.git' --exclude='.vscode' "$ROOT/Overlord-Client/" "$SERVER_DIR/dist/Overlord-Client/" 2>/dev/null \
-  || { cp -a "$ROOT/Overlord-Client" "$SERVER_DIR/dist/Overlord-Client" && rm -rf "$SERVER_DIR/dist/Overlord-Client/build" "$SERVER_DIR/dist/Overlord-Client/.git" "$SERVER_DIR/dist/Overlord-Client/.vscode"; }
+	|| {
+		rm -rf "$SERVER_DIR/dist/Overlord-Client"
+		cp -a "$ROOT/Overlord-Client" "$SERVER_DIR/dist/Overlord-Client"
+		rm -rf "$SERVER_DIR/dist/Overlord-Client/build" "$SERVER_DIR/dist/Overlord-Client/.git" "$SERVER_DIR/dist/Overlord-Client/.vscode"
+	}
 
 echo "[server] starting compiled executable..."
 PORT="${PORT:-5173}" \
