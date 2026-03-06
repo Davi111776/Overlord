@@ -260,12 +260,23 @@ export function handleRemoteDesktopViewerMessage(ws: ServerWebSocket<SocketData>
     case "desktop_set_quality": {
       const newQuality = Number(payload.quality) || 90;
       const newCodec = String(payload.codec || "").toLowerCase();
+      const reason = typeof payload.reason === "string"
+        ? payload.reason.slice(0, 512)
+        : "";
+      const source = typeof payload.source === "string"
+        ? payload.source.slice(0, 128)
+        : "";
       if (state.quality !== newQuality || state.codec !== newCodec) {
-        sendDesktopCommand(target, "desktop_set_quality", { quality: newQuality, codec: newCodec });
+        sendDesktopCommand(target, "desktop_set_quality", {
+          quality: newQuality,
+          codec: newCodec,
+          ...(reason ? { reason } : {}),
+          ...(source ? { source } : {}),
+        });
         state.quality = newQuality;
         state.codec = newCodec;
         rdStreamingState.set(clientId, state);
-        logger.debug(`[rd] set quality=${newQuality} codec=${newCodec || "(default)"}`);
+        logger.debug(`[rd] set quality=${newQuality} codec=${newCodec || "(default)"}${source ? ` source=${source}` : ""}${reason ? ` reason=${reason}` : ""}`);
       }
       break;
     }

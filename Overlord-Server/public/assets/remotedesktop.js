@@ -486,18 +486,44 @@ import { encodeMsgpack, decodeMsgpack } from "./msgpack-helpers.js";
     h264TimestampUs = 0;
   }
 
+  function normalizeFallbackReason(reason) {
+    if (!reason) return "unspecified";
+    if (typeof reason === "string") return reason;
+    if (reason instanceof Error) return reason.message || String(reason);
+    if (typeof reason === "object") {
+      if (typeof reason.message === "string" && reason.message) {
+        return reason.message;
+      }
+      if (typeof reason.name === "string" && reason.name) {
+        return reason.name;
+      }
+      try {
+        return JSON.stringify(reason);
+      } catch {
+        return String(reason);
+      }
+    }
+    return String(reason);
+  }
+
   function fallbackToJpegCodec(reason) {
     if (!prefersH264) return;
+    const reasonText = normalizeFallbackReason(reason);
     prefersH264 = false;
     h264LowFpsStreak = 0;
     destroyVideoDecoder();
     if (codecH264) codecH264.checked = false;
     localStorage.setItem(codecPrefKey, "0");
-    console.warn("rd: falling back to jpeg codec", reason || "");
+    console.warn("rd: falling back to jpeg codec", reasonText);
     const q = Number(qualitySlider?.value) || 90;
     setCodecModeLabel("jpeg", "fallback");
     if (ws.readyState === WebSocket.OPEN) {
-      sendCmd("desktop_set_quality", { quality: q, codec: "jpeg" });
+      sendCmd("desktop_set_quality", {
+        quality: q,
+        codec: "jpeg",
+        source: "viewer_fallback",
+        reason: reasonText,
+      });
     }
   }
 

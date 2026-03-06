@@ -449,6 +449,8 @@ func HandleCommand(ctx context.Context, env *runtime.Env, envelope map[string]in
 		payload, _ := envelope["payload"].(map[string]interface{})
 		quality := 90
 		codec := ""
+		reason := ""
+		source := ""
 		if payload != nil {
 			if q, ok := payloadInt(payload, "quality"); ok {
 				quality = q
@@ -456,8 +458,18 @@ func HandleCommand(ctx context.Context, env *runtime.Env, envelope map[string]in
 			if v, ok := payload["codec"].(string); ok {
 				codec = v
 			}
+			if v, ok := payload["reason"].(string); ok {
+				reason = strings.TrimSpace(v)
+			}
+			if v, ok := payload["source"].(string); ok {
+				source = strings.TrimSpace(v)
+			}
 		}
-		log.Printf("desktop: set quality=%d codec=%s", quality, codec)
+		if source != "" || reason != "" {
+			log.Printf("desktop: set quality=%d codec=%s source=%s reason=%s", quality, codec, source, reason)
+		} else {
+			log.Printf("desktop: set quality=%d codec=%s", quality, codec)
+		}
 		capture.SetQualityAndCodec(quality, codec)
 		sendCommandResultSafe(env, cmdID, true, "")
 		return nil
