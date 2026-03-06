@@ -82,6 +82,9 @@ if (userCount.count === 0) {
 
   logger.info(`[users] Initial admin account created (username: ${initialUsername})`);
   logger.warn(
+    `[users] Bootstrap login credentials -> username: ${initialUsername} | password: ${initialPassword}`,
+  );
+  logger.warn(
     "[users] ⚠️  SECURITY WARNING: Rotate the bootstrap password after first login. If it was auto-generated, retrieve it from data/save.json.",
   );
 }

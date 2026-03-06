@@ -17,6 +17,12 @@ import (
 	"github.com/kbinani/screenshot"
 )
 
+var (
+	monitorCountFn              = capture.MonitorCount
+	displayBoundsFn             = capture.DisplayBounds
+	captureDisplayRGBABitBltFn  = capture.CaptureDisplayRGBABitBlt
+)
+
 func HandleScreenshot(ctx context.Context, env *rt.Env, cmdID string, allDisplays bool) error {
 	if allDisplays {
 		log.Printf("screenshot: capturing all displays")
@@ -154,13 +160,13 @@ func captureScreenshotImage(allDisplays bool) (*image.RGBA, int, image.Rectangle
 }
 
 func captureScreenshotImageWindows(allDisplays bool) (*image.RGBA, int, image.Rectangle, error) {
-	monitorCount := capture.MonitorCount()
+	monitorCount := monitorCountFn()
 	if monitorCount <= 0 {
 		return nil, 0, image.Rectangle{}, errors.New("no active displays available")
 	}
 
 	if !allDisplays {
-		img, err := capture.CaptureDisplayRGBABitBlt(0)
+		img, err := captureDisplayRGBABitBltFn(0)
 		if err != nil || img == nil {
 			return nil, 0, image.Rectangle{}, err
 		}
@@ -176,8 +182,8 @@ func captureScreenshotImageWindows(allDisplays bool) (*image.RGBA, int, image.Re
 	maxX, maxY := int(-1e9), int(-1e9)
 
 	for i := 0; i < monitorCount; i++ {
-		bounds := capture.DisplayBounds(i)
-		img, err := capture.CaptureDisplayRGBABitBlt(i)
+		bounds := displayBoundsFn(i)
+		img, err := captureDisplayRGBABitBltFn(i)
 		if err != nil || img == nil {
 			return nil, 0, image.Rectangle{}, err
 		}
