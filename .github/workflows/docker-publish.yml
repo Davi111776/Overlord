@@ -2,8 +2,6 @@ name: overlord-ci
 
 on:
   push:
-    branches:
-      - main
     tags:
       - 'v*'
   workflow_dispatch:
@@ -22,6 +20,49 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Read Source Version
+        id: srcver
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          client_version=$(grep -oP 'var\s+AgentVersion\s*=\s*"\K[0-9]+\.[0-9]+\.[0-9]+' Overlord-Client/cmd/agent/config/config.go)
+          server_version=$(grep -oP 'export\s+const\s+SERVER_VERSION\s*=\s*"\K[0-9]+\.[0-9]+\.[0-9]+' Overlord-Server/src/version.ts)
+          package_version=$(node -p "require('./Overlord-Server/package.json').version")
+
+          if [[ -z "$client_version" || -z "$server_version" || -z "$package_version" ]]; then
+            echo "Failed to parse one or more version values from source files" >&2
+            exit 1
+          fi
+
+          if [[ "$client_version" != "$server_version" || "$client_version" != "$package_version" ]]; then
+            echo "Version mismatch detected:" >&2
+            echo "  client(config.go): $client_version" >&2
+            echo "  server(version.ts): $server_version" >&2
+            echo "  package(package.json): $package_version" >&2
+            exit 1
+          fi
+
+          major="${client_version%%.*}"
+          rest="${client_version#*.}"
+          minor="${rest%%.*}"
+
+          echo "version=$client_version" >> "$GITHUB_OUTPUT"
+          echo "major=$major" >> "$GITHUB_OUTPUT"
+          echo "minor=$minor" >> "$GITHUB_OUTPUT"
+
+      - name: Validate Tag Matches Source Version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag_version="${GITHUB_REF_NAME#v}"
+          src_version="${{ steps.srcver.outputs.version }}"
+          if [[ "$tag_version" != "$src_version" ]]; then
+            echo "Tag version ($tag_version) does not match source version ($src_version)" >&2
+            exit 1
+          fi
 
       - name: Normalize image name
         run: echo "IMAGE_NAME=${GITHUB_REPOSITORY,,}" >> $GITHUB_ENV
@@ -42,9 +83,9 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
-            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
-            type=semver,pattern={{major}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=raw,value=${{ steps.srcver.outputs.version }}
+            type=raw,value=${{ steps.srcver.outputs.major }}.${{ steps.srcver.outputs.minor }}
+            type=raw,value=${{ steps.srcver.outputs.major }}
             type=raw,value=latest
 
       - name: Build and push server image
