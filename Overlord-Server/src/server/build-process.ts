@@ -33,6 +33,35 @@ function resolveClientModuleDir(rootDir: string): string | null {
   return null;
 }
 
+async function estimateBuildPackageCount(clientDir: string): Promise<number> {
+  try {
+    const result = await $`go list -deps -f '{{if not .Standard}}{{.ImportPath}}{{end}}' ./cmd/agent`
+      .cwd(clientDir)
+      .quiet()
+      .nothrow();
+
+    if (result.exitCode !== 0) {
+      return 0;
+    }
+
+    const packages = result.stdout
+      .toString()
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+
+    return new Set(packages).size;
+  } catch {
+    return 0;
+  }
+}
+
+function renderProgressBar(percent: number, width = 24): string {
+  const clamped = Math.max(0, Math.min(100, percent));
+  const filled = Math.round((clamped / 100) * width);
+  return `[${"#".repeat(filled)}${"-".repeat(Math.max(0, width - filled))}]`;
+}
+
 type BuildProcessConfig = {
   platforms: string[];
   serverUrl?: string;
@@ -245,35 +274,150 @@ export async function startBuildProcess(
         sendToStream({ type: "output", text: "Client printing disabled (noprint tag)\n", level: "info" });
       }
 
+      const totalPackages = await estimateBuildPackageCount(clientDir);
+      if (totalPackages > 0) {
+        sendToStream({
+          type: "output",
+          text: `Estimated compile units: ${totalPackages} packages\n`,
+          level: "info",
+        });
+      }
+
       try {
         const buildTool = config.obfuscate ? "garble" : "go";
+        const verboseArg = "-x -v ";
         const tagArg = config.noPrinting ? "-tags noprint " : "";
-        logger.info(`[build:${buildId.substring(0, 8)}] Building: ${buildTool} build ${tagArg}${ldflags ? `-ldflags="${ldflags}" ` : ""}-o ${outDir}/${outputName} ./cmd/agent`);
+        logger.info(`[build:${buildId.substring(0, 8)}] Building: ${buildTool} build ${verboseArg}${tagArg}${ldflags ? `-ldflags="${ldflags}" ` : ""}-o ${outDir}/${outputName} ./cmd/agent`);
         logger.info(`[build:${buildId.substring(0, 8)}] Environment: GOOS=${os} GOARCH=${actualArch} CGO_ENABLED=${env.CGO_ENABLED} CC=${env.CC || "<default>"}`);
+        sendToStream({ type: "output", text: "Build trace enabled (-x -v)\n", level: "info" });
+
+        const planCmd = config.obfuscate
+          ? (config.noPrinting
+              ? (ldflags
+                  ? $`garble build -n -tags noprint -ldflags=${ldflags} -o ${outDir}/${outputName} ./cmd/agent`
+                  : $`garble build -n -tags noprint -o ${outDir}/${outputName} ./cmd/agent`)
+              : (ldflags
+                  ? $`garble build -n -ldflags=${ldflags} -o ${outDir}/${outputName} ./cmd/agent`
+                  : $`garble build -n -o ${outDir}/${outputName} ./cmd/agent`))
+          : (config.noPrinting
+              ? (ldflags
+                  ? $`go build -n -tags noprint -ldflags=${ldflags} -o ${outDir}/${outputName} ./cmd/agent`
+                  : $`go build -n -tags noprint -o ${outDir}/${outputName} ./cmd/agent`)
+              : (ldflags
+                  ? $`go build -n -ldflags=${ldflags} -o ${outDir}/${outputName} ./cmd/agent`
+                  : $`go build -n -o ${outDir}/${outputName} ./cmd/agent`));
+
+        const planResult = await planCmd.env(env).cwd(clientDir).quiet().nothrow();
+        const plannedSteps = planResult.stdout
+          .toString()
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter((line) => line.length > 0).length;
+
+        if (plannedSteps > 0) {
+          sendToStream({
+            type: "output",
+            text: `Planned build steps (-n): ${plannedSteps}\n`,
+            level: "info",
+          });
+        }
 
         const buildCmd = config.obfuscate
           ? (config.noPrinting
               ? (ldflags
-                  ? $`garble build -tags noprint -ldflags=${ldflags} -o ${outDir}/${outputName} ./cmd/agent`
-                  : $`garble build -tags noprint -o ${outDir}/${outputName} ./cmd/agent`)
+                  ? $`garble build -x -v -tags noprint -ldflags=${ldflags} -o ${outDir}/${outputName} ./cmd/agent`
+                  : $`garble build -x -v -tags noprint -o ${outDir}/${outputName} ./cmd/agent`)
               : (ldflags
-                  ? $`garble build -ldflags=${ldflags} -o ${outDir}/${outputName} ./cmd/agent`
-                  : $`garble build -o ${outDir}/${outputName} ./cmd/agent`))
+                  ? $`garble build -x -v -ldflags=${ldflags} -o ${outDir}/${outputName} ./cmd/agent`
+                  : $`garble build -x -v -o ${outDir}/${outputName} ./cmd/agent`))
           : (config.noPrinting
               ? (ldflags
-                  ? $`go build -tags noprint -ldflags=${ldflags} -o ${outDir}/${outputName} ./cmd/agent`
-                  : $`go build -tags noprint -o ${outDir}/${outputName} ./cmd/agent`)
+                  ? $`go build -x -v -tags noprint -ldflags=${ldflags} -o ${outDir}/${outputName} ./cmd/agent`
+                  : $`go build -x -v -tags noprint -o ${outDir}/${outputName} ./cmd/agent`)
               : (ldflags
-                  ? $`go build -ldflags=${ldflags} -o ${outDir}/${outputName} ./cmd/agent`
-                  : $`go build -o ${outDir}/${outputName} ./cmd/agent`));
+                  ? $`go build -x -v -ldflags=${ldflags} -o ${outDir}/${outputName} ./cmd/agent`
+                  : $`go build -x -v -o ${outDir}/${outputName} ./cmd/agent`));
 
         const proc = buildCmd.env(env).cwd(clientDir).nothrow();
 
-        for await (const line of proc.lines()) {
-          sendToStream({ type: "output", text: line + "\n", level: "info" });
+        const compiledPackages = new Set<string>();
+        const packageLinePattern = /^[A-Za-z0-9._~\-]+(?:\/[A-Za-z0-9._~\-]+)+$/;
+        let executedSteps = 0;
+        let lastBarPercent = -1;
+        const phaseStartedAt = Date.now();
+
+        const emitBuildProgressBar = (force = false) => {
+          const packagePercent =
+            totalPackages > 0
+              ? Math.floor((compiledPackages.size / Math.max(1, totalPackages)) * 100)
+              : -1;
+          const stepPercent =
+            plannedSteps > 0
+              ? Math.floor((executedSteps / Math.max(1, plannedSteps)) * 100)
+              : -1;
+
+          let percent = Math.max(packagePercent, stepPercent);
+          if (percent < 0) {
+            const elapsedMs = Date.now() - phaseStartedAt;
+            percent = Math.min(90, Math.floor(elapsedMs / 1500));
+          }
+
+          percent = Math.max(0, Math.min(99, percent));
+          if (!force && percent === lastBarPercent) {
+            return;
+          }
+          lastBarPercent = percent;
+
+          let detail = "working";
+          if (totalPackages > 0) {
+            detail = `pkgs ${Math.min(compiledPackages.size, totalPackages)}/${totalPackages}`;
+          } else if (plannedSteps > 0) {
+            detail = `steps ${Math.min(executedSteps, plannedSteps)}/${plannedSteps}`;
+          }
+
+          sendToStream({
+            type: "status",
+            text: `Compiling ${platform}: ${renderProgressBar(percent)} ${percent}% (${detail})`,
+          });
+        };
+
+        emitBuildProgressBar(true);
+        const progressBarTimer = setInterval(() => emitBuildProgressBar(false), 1000);
+        let result: any;
+        try {
+          for await (const line of proc.lines()) {
+            sendToStream({ type: "output", text: line + "\n", level: "info" });
+
+            if (line.trim().length > 0) {
+              executedSteps += 1;
+            }
+
+            const trimmed = line.trim();
+            if (packageLinePattern.test(trimmed) && !compiledPackages.has(trimmed)) {
+              compiledPackages.add(trimmed);
+
+              if (totalPackages > 0) {
+                const percent = Math.min(99, Math.floor((compiledPackages.size / totalPackages) * 100));
+                sendToStream({
+                  type: "status",
+                  text: `Compiling ${platform}: ${compiledPackages.size}/${totalPackages} packages (${percent}%)`,
+                });
+              } else {
+                sendToStream({
+                  type: "status",
+                  text: `Compiling ${platform}: ${compiledPackages.size} packages`,
+                });
+              }
+            }
+
+            emitBuildProgressBar(false);
+          }
+
+          result = await proc;
+        } finally {
+          clearInterval(progressBarTimer);
         }
 
-        const result = await proc;
         logger.info(`[build:${buildId.substring(0, 8)}] Process exited with code: ${result.exitCode}`);
 
         if (result.exitCode !== 0) {
@@ -286,6 +430,11 @@ export async function startBuildProcess(
           throw new Error(`Build failed for ${platform}`);
         }
 
+        sendToStream({
+          type: "status",
+          text: `Compiling ${platform}: ${renderProgressBar(100)} 100% (complete)`,
+        });
+
         const filePath = `${outDir}/${outputName}`;
         const file = Bun.file(filePath);
         const size = file.size;
@@ -297,7 +446,7 @@ export async function startBuildProcess(
           size,
         });
       } catch (err: any) {
-        const errorMsg = `Γ£ù Failed to build ${platform}: ${err.message || err}\n`;
+        const errorMsg = `[ERROR] Failed to build ${platform}: ${err.message || err}\n`;
         logger.error(`[build:${buildId.substring(0, 8)}] ${errorMsg.trim()}`);
         sendToStream({ type: "output", text: errorMsg, level: "error" });
         throw err;
@@ -306,7 +455,7 @@ export async function startBuildProcess(
 
     build.status = "completed";
     logger.info(`[build:${buildId.substring(0, 8)}] Build completed successfully! Built ${build.files.length} file(s)`);
-    sendToStream({ type: "output", text: `\nΓ£ô Build completed successfully!\n`, level: "success" });
+    sendToStream({ type: "output", text: `\n[OK] Build completed successfully!\n`, level: "success" });
     sendToStream({ type: "complete", success: true, files: build.files, buildId, expiresAt: build.expiresAt });
 
     saveBuild({
