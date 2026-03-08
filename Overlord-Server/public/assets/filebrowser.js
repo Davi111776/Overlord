@@ -14,6 +14,7 @@ let lastSuccessfulResponse = 0;
 let pendingToast = null;
 const recentToasts = new Map();
 const pendingCommandResults = new Map();
+const pendingCommandWaiters = new Map();
 const VIRTUALIZATION_THRESHOLD = 400;
 const VIRTUAL_ROW_HEIGHT = 58;
 const VIRTUAL_OVERSCAN = 8;
@@ -189,6 +190,25 @@ function trackCommandResult(commandId, options = {}) {
     refreshOnSuccess,
     successMessage,
     errorPrefix,
+  });
+}
+
+function waitForCommandResult(commandId, timeoutMs = 10 * 60 * 1000) {
+  return new Promise((resolve, reject) => {
+    if (!commandId) {
+      reject(new Error("missing command id"));
+      return;
+    }
+    const existing = pendingCommandWaiters.get(commandId);
+    if (existing) {
+      clearTimeout(existing.timeoutId);
+      existing.reject(new Error("superseded command waiter"));
+    }
+    const timeoutId = setTimeout(() => {
+      pendingCommandWaiters.delete(commandId);
+      reject(new Error("command timed out"));
+    }, timeoutMs);
+    pendingCommandWaiters.set(commandId, { resolve, reject, timeoutId });
   });
 }
 
@@ -838,7 +858,13 @@ function downloadFile(path) {
       }
 
       const requestData = await requestRes.json();
-      if (!requestData?.downloadId) {
+      const downloadUrl = typeof requestData?.downloadUrl === "string"
+        ? requestData.downloadUrl
+        : (requestData?.downloadId
+          ? `/api/file/download/${encodeURIComponent(requestData.downloadId)}`
+          : "");
+
+      if (!downloadUrl) {
         notifyToast("Download failed", "error", 5000);
         removeTransfer(transferId);
         fileDownloads.delete(path);
@@ -847,19 +873,17 @@ function downloadFile(path) {
       }
 
       console.debug("[filebrowser] download request accepted", {
-        downloadId: requestData.downloadId,
+        downloadUrl,
       });
 
       console.debug("[filebrowser] download stream start", {
-        downloadId: requestData.downloadId,
+        downloadUrl,
       });
 
-      const res = await fetch("/api/file/download", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const res = await fetch(downloadUrl, {
+        method: "GET",
         credentials: "include",
         signal: abortController.signal,
-        body: JSON.stringify({ downloadId: requestData.downloadId }),
       });
 
       console.debug("[filebrowser] download response", {
@@ -1309,6 +1333,24 @@ function handleFileUploadResult(msg) {
   }
 
   const offset = toNumber(msg.offset);
+  if (offset !== null) {
+    const firstAckForOffset = !transfer.ackedOffsets.has(offset);
+    if (firstAckForOffset) {
+      transfer.ackedOffsets.add(offset);
+      transfer.receivedChunks += 1;
+    }
+
+    if (Number.isFinite(msg.received)) {
+      transfer.receivedBytes = Math.min(Number(msg.received), transfer.total);
+      transfer.sent = transfer.receivedBytes;
+    }
+
+    if (transfer.total > 0) {
+      transfer.progress = Math.round((transfer.sent / transfer.total) * 100);
+      updateTransferProgress(transfer.id, transfer.progress, transfer.sent, transfer.total);
+    }
+  }
+
   const pendingOffset = offset !== null
     ? offset
     : (transfer.pendingAcks.has(0) ? 0 : null);
@@ -1352,6 +1394,20 @@ function handleCommandResult(msg) {
   const tracked = msg.commandId
     ? pendingCommandResults.get(msg.commandId)
     : null;
+
+  const waiter = msg.commandId
+    ? pendingCommandWaiters.get(msg.commandId)
+    : null;
+  if (waiter) {
+    clearTimeout(waiter.timeoutId);
+    pendingCommandWaiters.delete(msg.commandId);
+    if (msg.ok) {
+      waiter.resolve(msg);
+    } else {
+      waiter.reject(new Error(msg.message || "operation failed"));
+    }
+  }
+
   if (!tracked) {
     return;
   }
@@ -1528,57 +1584,6 @@ if (sortOrderBtn) {
   });
 }
 
-function waitForUploadAck(transfer, offset, timeoutMs) {
-  return new Promise((resolve, reject) => {
-    const existing = transfer.pendingAcks.get(offset);
-    if (existing) {
-      clearTimeout(existing.timeoutId);
-      existing.reject(new Error("Superseded upload ack"));
-    }
-
-    const timeoutId = setTimeout(() => {
-      transfer.pendingAcks.delete(offset);
-      reject(new Error("Upload chunk timed out"));
-    }, timeoutMs);
-
-    transfer.pendingAcks.set(offset, { resolve, reject, timeoutId });
-  });
-}
-
-function clearUploadPendingAcks(transfer, reason) {
-  transfer.pendingAcks.forEach((pending, _offset) => {
-    clearTimeout(pending.timeoutId);
-    pending.reject(new Error(reason));
-  });
-  transfer.pendingAcks.clear();
-}
-
-async function sendChunkWithRetry(transfer, payload, offset) {
-  const maxRetries = 5;
-  const ackTimeoutMs = 20000;
-  const backoffMs = 300;
-
-  for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
-    if (transfer.cancelled) {
-      throw new Error("Upload cancelled");
-    }
-
-    const ackPromise = waitForUploadAck(transfer, offset, ackTimeoutMs);
-    send(payload);
-
-    try {
-      return await ackPromise;
-    } catch (err) {
-      if (attempt === maxRetries) {
-        throw err;
-      }
-      await new Promise((resolve) => setTimeout(resolve, backoffMs * attempt));
-    }
-  }
-
-  throw new Error("Upload failed after retries");
-}
-
 function finishUpload(transfer) {
   console.log("Upload complete:", transfer.path);
   updateStatus("connected", "Connected");
@@ -1587,6 +1592,111 @@ function finishUpload(transfer) {
   fileUploads.delete(transfer.path);
   fileUploadsById.delete(transfer.transferId);
   listFiles(currentPath);
+}
+
+async function uploadFileViaHttpPull(file, path, transfer) {
+  console.debug("[filebrowser] upload request start", {
+    clientId,
+    path,
+    fileName: file.name,
+    size: file.size,
+  });
+
+  const requestRes = await fetch("/api/file/upload/request", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({
+      clientId,
+      path,
+      fileName: file.name,
+    }),
+  });
+
+  if (!requestRes.ok) {
+    const text = await requestRes.text();
+    throw new Error(text || "upload request failed");
+  }
+
+  const requestData = await requestRes.json();
+  const uploadUrl = typeof requestData?.uploadUrl === "string"
+    ? requestData.uploadUrl
+    : (requestData?.uploadId
+      ? `/api/file/upload/${encodeURIComponent(requestData.uploadId)}`
+      : "");
+  if (!uploadUrl) {
+    throw new Error("upload request failed");
+  }
+
+  console.debug("[filebrowser] upload stage url", { uploadUrl });
+
+  let uploadRes;
+  try {
+    uploadRes = await fetch(uploadUrl, {
+      method: "PUT",
+      headers: { "Content-Type": "application/octet-stream" },
+      credentials: "include",
+      body: file,
+    });
+  } catch (err) {
+    console.warn("[filebrowser] upload stage PUT failed, retrying as POST", err);
+    uploadRes = await fetch(uploadUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/octet-stream" },
+      credentials: "include",
+      body: file,
+    });
+  }
+
+  if (!uploadRes.ok) {
+    const text = await uploadRes.text();
+    console.debug("[filebrowser] upload stage failed", {
+      status: uploadRes.status,
+      body: text,
+    });
+    throw new Error(text || "upload staging failed");
+  }
+
+  transfer.receivedBytes = Math.round(file.size * 0.5);
+  transfer.sent = transfer.receivedBytes;
+  transfer.progress = 50;
+  updateTransferProgress(transfer.id, transfer.progress, transfer.sent, transfer.total);
+
+  const uploadData = await uploadRes.json();
+  if (!uploadData?.pullUrl) {
+    throw new Error("upload staging failed");
+  }
+
+  console.debug("[filebrowser] upload staged", {
+    pullUrl: uploadData.pullUrl,
+    size: uploadData.size,
+  });
+
+  const commandId = `upload-http-${Date.now()}-${Math.random()}`;
+  const waitResult = waitForCommandResult(commandId, 12 * 60 * 1000);
+  send({
+    type: "command",
+    commandType: "file_upload_http",
+    id: commandId,
+    payload: {
+      path,
+      url: uploadData.pullUrl,
+      total: file.size,
+    },
+  });
+
+  await waitResult;
+
+  console.debug("[filebrowser] upload command completed", {
+    path,
+    size: file.size,
+  });
+
+  transfer.receivedBytes = file.size;
+  transfer.sent = file.size;
+  transfer.progress = 100;
+  transfer.receivedChunks = transfer.expectedChunks;
+  updateTransferProgress(transfer.id, transfer.progress, transfer.sent, transfer.total);
 }
 
 async function uploadFile(file) {
@@ -1618,84 +1728,10 @@ async function uploadFile(file) {
   activeTransfers.set(transferId, transfer);
   addTransferToUI(transfer);
 
-  const chunkSize = 900 * 1024;
-  const maxInFlightChunks = 6;
-  transfer.expectedChunks = Math.max(1, Math.ceil(file.size / chunkSize));
-  let nextOffset = 0;
-  const inFlight = new Set();
-
-  const processChunk = async (offset) => {
-    const chunk = file.slice(offset, offset + chunkSize);
-    const arrayBuffer = await chunk.arrayBuffer();
-    const uint8Array = new Uint8Array(arrayBuffer);
-
-    const payload = {
-      type: "file_upload",
-      path,
-      data: uint8Array,
-      offset,
-      transferId,
-      total: file.size,
-    };
-    const ack = await sendChunkWithRetry(transfer, payload, offset);
-
-    if (!transfer.ackedOffsets.has(offset)) {
-      transfer.ackedOffsets.add(offset);
-      transfer.receivedChunks += 1;
-    }
-
-    if (Number.isFinite(ack?.received)) {
-      transfer.receivedBytes = Math.min(Number(ack.received), transfer.total);
-      transfer.sent = transfer.receivedBytes;
-    } else {
-      transfer.receivedBytes = Math.min(transfer.receivedBytes + chunk.size, transfer.total);
-      transfer.sent = transfer.receivedBytes;
-    }
-
-    transfer.progress = Math.round((transfer.sent / file.size) * 100);
-    updateTransferProgress(transferId, transfer.progress, transfer.sent, file.size);
-  };
-
-  const fillUploadWindow = () => {
-    while (
-      !transfer.cancelled &&
-      nextOffset < file.size &&
-      inFlight.size < maxInFlightChunks
-    ) {
-      const offset = nextOffset;
-      nextOffset += chunkSize;
-
-      const task = processChunk(offset).finally(() => {
-        inFlight.delete(task);
-      });
-      inFlight.add(task);
-    }
-  };
-
   try {
-    fillUploadWindow();
-
-    while (inFlight.size > 0) {
-      await Promise.race(inFlight);
-
-      if (transfer.cancelled) {
-        clearUploadPendingAcks(transfer, "Upload cancelled");
-        console.log("Upload cancelled:", path);
-        removeTransfer(transferId);
-        fileUploads.delete(path);
-        fileUploadsById.delete(transferId);
-        return;
-      }
-
-      fillUploadWindow();
-    }
-
-    transfer.completed = true;
-    if (transfer.receivedChunks >= transfer.expectedChunks) {
-      finishUpload(transfer);
-    }
+    await uploadFileViaHttpPull(file, path, transfer);
+    finishUpload(transfer);
   } catch (err) {
-    clearUploadPendingAcks(transfer, "Upload aborted");
     console.error("Upload error:", err);
     removeTransfer(transferId);
     fileUploads.delete(path);

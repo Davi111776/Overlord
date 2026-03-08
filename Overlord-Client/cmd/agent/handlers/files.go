@@ -5,9 +5,13 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"io"
 	"log"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -460,6 +464,88 @@ func HandleFileUpload(ctx context.Context, env *agentRuntime.Env, cmdID string, 
 		Total:      total,
 	}
 	return wire.WriteMsg(ctx, env.Conn, result)
+}
+
+func HandleFileUploadHTTP(ctx context.Context, env *agentRuntime.Env, cmdID string, destPath string, sourceURL string, expectedSize int64) error {
+	parsed, err := url.Parse(strings.TrimSpace(sourceURL))
+	if err != nil || parsed == nil || parsed.Host == "" {
+		return wire.WriteMsg(ctx, env.Conn, wire.CommandResult{Type: "command_result", CommandID: cmdID, OK: false, Message: "invalid upload url"})
+	}
+	if parsed.Scheme != "https" && parsed.Scheme != "http" {
+		return wire.WriteMsg(ctx, env.Conn, wire.CommandResult{Type: "command_result", CommandID: cmdID, OK: false, Message: "unsupported upload url scheme"})
+	}
+
+	tlsConfig := &tls.Config{InsecureSkipVerify: env.Cfg.TLSInsecureSkipVerify, MinVersion: tls.VersionTLS12}
+	if caPath := strings.TrimSpace(env.Cfg.TLSCAPath); caPath != "" {
+		caBytes, err := os.ReadFile(caPath)
+		if err != nil {
+			return wire.WriteMsg(ctx, env.Conn, wire.CommandResult{Type: "command_result", CommandID: cmdID, OK: false, Message: fmt.Sprintf("failed to read TLS CA: %v", err)})
+		}
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(caBytes) {
+			return wire.WriteMsg(ctx, env.Conn, wire.CommandResult{Type: "command_result", CommandID: cmdID, OK: false, Message: "failed to parse TLS CA"})
+		}
+		tlsConfig.RootCAs = pool
+	}
+
+	client := &http.Client{Transport: &http.Transport{TLSClientConfig: tlsConfig}}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, parsed.String(), nil)
+	if err != nil {
+		return wire.WriteMsg(ctx, env.Conn, wire.CommandResult{Type: "command_result", CommandID: cmdID, OK: false, Message: err.Error()})
+	}
+	if token := strings.TrimSpace(env.Cfg.AgentToken); token != "" {
+		req.Header.Set("x-agent-token", token)
+	}
+	if id := strings.TrimSpace(env.Cfg.ID); id != "" {
+		req.Header.Set("x-overlord-client-id", id)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return wire.WriteMsg(ctx, env.Conn, wire.CommandResult{Type: "command_result", CommandID: cmdID, OK: false, Message: err.Error()})
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return wire.WriteMsg(ctx, env.Conn, wire.CommandResult{Type: "command_result", CommandID: cmdID, OK: false, Message: fmt.Sprintf("upload fetch failed: status %d", resp.StatusCode)})
+	}
+
+	dir := filepath.Dir(destPath)
+	if dir != "." {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return wire.WriteMsg(ctx, env.Conn, wire.CommandResult{Type: "command_result", CommandID: cmdID, OK: false, Message: err.Error()})
+		}
+	}
+
+	tmpPath := destPath + ".httpuploading"
+	f, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
+	if err != nil {
+		return wire.WriteMsg(ctx, env.Conn, wire.CommandResult{Type: "command_result", CommandID: cmdID, OK: false, Message: err.Error()})
+	}
+
+	written, copyErr := io.Copy(f, resp.Body)
+	closeErr := f.Close()
+	if copyErr != nil {
+		_ = os.Remove(tmpPath)
+		return wire.WriteMsg(ctx, env.Conn, wire.CommandResult{Type: "command_result", CommandID: cmdID, OK: false, Message: copyErr.Error()})
+	}
+	if closeErr != nil {
+		_ = os.Remove(tmpPath)
+		return wire.WriteMsg(ctx, env.Conn, wire.CommandResult{Type: "command_result", CommandID: cmdID, OK: false, Message: closeErr.Error()})
+	}
+
+	if expectedSize > 0 && written != expectedSize {
+		_ = os.Remove(tmpPath)
+		return wire.WriteMsg(ctx, env.Conn, wire.CommandResult{Type: "command_result", CommandID: cmdID, OK: false, Message: "upload size mismatch"})
+	}
+
+	_ = os.Remove(destPath)
+	if err := os.Rename(tmpPath, destPath); err != nil {
+		_ = os.Remove(tmpPath)
+		return wire.WriteMsg(ctx, env.Conn, wire.CommandResult{Type: "command_result", CommandID: cmdID, OK: false, Message: err.Error()})
+	}
+
+	return wire.WriteMsg(ctx, env.Conn, wire.CommandResult{Type: "command_result", CommandID: cmdID, OK: true})
 }
 
 func HandleFileDelete(ctx context.Context, env *agentRuntime.Env, cmdID string, path string) error {

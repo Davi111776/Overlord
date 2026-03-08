@@ -20,7 +20,7 @@ import { handleAutoScriptsRoutes } from "./server/routes/auto-scripts-routes";
 import { handleBuildRoutes } from "./server/routes/build-routes";
 import { handleAssetsRoutes } from "./server/routes/assets-routes";
 import { handleDeployRoutes } from "./server/routes/deploy-routes";
-import { handleFileDownloadRoutes } from "./server/routes/file-download-routes";
+import { cleanupFileTransferTempFiles, handleFileDownloadRoutes } from "./server/routes/file-download-routes";
 import { handleClientRoutes } from "./server/routes/client-routes";
 import { handleMiscRoutes } from "./server/routes/misc-routes";
 import { handleNotificationsConfigRoutes } from "./server/routes/notifications-config-routes";
@@ -141,6 +141,21 @@ function envFlagEnabled(name: string): boolean {
 
 const TLS_OFFLOAD = envFlagEnabled("OVERLORD_TLS_OFFLOAD");
 
+function parseMaxHttpBodyBytes(): number {
+  const raw = String(process.env.OVERLORD_MAX_HTTP_BODY_BYTES || "").trim();
+  if (raw !== "") {
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return Math.floor(parsed);
+    }
+    logger.warn(`[HTTP] Invalid OVERLORD_MAX_HTTP_BODY_BYTES=${raw}; using default`);
+  }
+  // Default to 2 GiB to allow large ISO uploads in file browser staging.
+  return 2 * 1024 * 1024 * 1024;
+}
+
+const MAX_HTTP_BODY_BYTES = parseMaxHttpBodyBytes();
+
 const pluginLoadedByClient = new Map<string, Set<string>>();
 const pendingPluginEvents = new Map<string, Array<{ event: string; payload: any }>>();
 const pluginLoadingByClient = new Map<string, Set<string>>();
@@ -241,6 +256,8 @@ const pendingCommandReplies = new Map<string, PendingCommandReply>();
 
 async function startServer() {
   await loadPluginState();
+  await cleanupFileTransferTempFiles(DATA_DIR);
+  logger.info("[filebrowser] cleaned stale transfer temp files on startup");
   let tls:
     | {
         tlsOptions: { cert?: string; key?: string; ca?: string };
@@ -392,6 +409,7 @@ async function startServer() {
     hostname: HOST,
     ...(tls ? { tls: tls.tlsOptions } : {}),
     idleTimeout: 255,
+    maxRequestBodySize: MAX_HTTP_BODY_BYTES,
     fetch: createHttpFetchHandler({
       metrics,
       CORS_HEADERS,
@@ -440,6 +458,7 @@ async function startServer() {
 
   if (tls) {
     logServerStartup(server, tls.certPathUsed, tls.source);
+    logger.info(`[HTTP] maxRequestBodySize=${MAX_HTTP_BODY_BYTES} bytes`);
   } else {
     const hostname = server.hostname || "0.0.0.0";
     const port = server.port ?? 0;
@@ -451,6 +470,7 @@ async function startServer() {
     logger.info("");
     logger.info("External access should be HTTPS/WSS via your reverse proxy platform.");
     logger.info("Set this mode only when TLS is terminated by the platform (for example Render). ");
+    logger.info(`[HTTP] maxRequestBodySize=${MAX_HTTP_BODY_BYTES} bytes`);
     logger.info("========================================");
   }
 }

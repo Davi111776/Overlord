@@ -1345,6 +1345,12 @@ func HandleCommand(ctx context.Context, env *runtime.Env, envelope map[string]in
 			data = d
 		}
 		return HandleFileUpload(ctx, env, cmdID, path, data, offset, total, transferID)
+	case "file_upload_http":
+		payload, _ := envelope["payload"].(map[string]interface{})
+		path, _ := payload["path"].(string)
+		sourceURL, _ := payload["url"].(string)
+		total := payloadNumberToInt64(payload["total"])
+		return HandleFileUploadHTTP(ctx, env, cmdID, path, sourceURL, total)
 	case "file_delete":
 		path, _ := envelopePayloadString(envelope, "path")
 		return HandleFileDelete(ctx, env, cmdID, path)

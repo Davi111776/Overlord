@@ -3,6 +3,8 @@ package handlers
 import (
 	"bytes"
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -465,5 +467,89 @@ func TestHandleFileZip(t *testing.T) {
 
 	if !hasResult && !hasDownload {
 		t.Error("Expected either command_result or file_download message")
+	}
+}
+
+func TestHandleFileUploadHTTP(t *testing.T) {
+	data := []byte("http-upload-payload")
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("x-overlord-client-id"); got != "client-abc" {
+			t.Fatalf("expected x-overlord-client-id client-abc, got %q", got)
+		}
+		if got := r.Header.Get("x-agent-token"); got != "agent-token" {
+			t.Fatalf("expected x-agent-token agent-token, got %q", got)
+		}
+		_, _ = w.Write(data)
+	}))
+	defer ts.Close()
+
+	tmpDir := t.TempDir()
+	destPath := filepath.Join(tmpDir, "uploaded-http.bin")
+
+	writer := &testWriter{}
+	env := &rt.Env{
+		Conn: writer,
+		Cfg: config.Config{
+			ID:                    "client-abc",
+			AgentToken:            "agent-token",
+			TLSInsecureSkipVerify: true,
+		},
+	}
+
+	if err := HandleFileUploadHTTP(context.Background(), env, "cmd-http-upload", destPath, ts.URL+"/file", int64(len(data))); err != nil {
+		t.Fatalf("HandleFileUploadHTTP failed: %v", err)
+	}
+
+	content, err := os.ReadFile(destPath)
+	if err != nil {
+		t.Fatalf("failed reading uploaded file: %v", err)
+	}
+	if !bytes.Equal(content, data) {
+		t.Fatalf("uploaded content mismatch")
+	}
+
+	if len(writer.msgs) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(writer.msgs))
+	}
+	var result wire.CommandResult
+	if err := msgpack.Unmarshal(writer.msgs[0], &result); err != nil {
+		t.Fatalf("failed to unmarshal command result: %v", err)
+	}
+	if !result.OK {
+		t.Fatalf("expected OK=true, got false: %s", result.Message)
+	}
+}
+
+func TestHandleFileUploadHTTP_SizeMismatch(t *testing.T) {
+	data := []byte("small")
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(data)
+	}))
+	defer ts.Close()
+
+	tmpDir := t.TempDir()
+	destPath := filepath.Join(tmpDir, "uploaded-http-mismatch.bin")
+
+	writer := &testWriter{}
+	env := &rt.Env{
+		Conn: writer,
+		Cfg:  config.Config{TLSInsecureSkipVerify: true},
+	}
+
+	if err := HandleFileUploadHTTP(context.Background(), env, "cmd-http-upload-mismatch", destPath, ts.URL+"/file", int64(len(data)+1)); err != nil {
+		t.Fatalf("HandleFileUploadHTTP failed: %v", err)
+	}
+
+	if len(writer.msgs) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(writer.msgs))
+	}
+	var result wire.CommandResult
+	if err := msgpack.Unmarshal(writer.msgs[0], &result); err != nil {
+		t.Fatalf("failed to unmarshal command result: %v", err)
+	}
+	if result.OK {
+		t.Fatalf("expected OK=false for size mismatch")
 	}
 }

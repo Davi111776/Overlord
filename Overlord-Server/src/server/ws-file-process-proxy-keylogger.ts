@@ -116,6 +116,19 @@ export function handleFileBrowserViewerMessage(ws: ServerWebSocket<SocketData>, 
         target.ws.send(encodeMessage({ type: "command", commandType: "file_execute", id: payload.id || commandId, payload: actualPayload } as any));
         metrics.recordCommand("file_execute");
         break;
+      case "file_upload_http":
+        target.ws.send(encodeMessage({ type: "command", commandType: "file_upload_http", id: payload.id || commandId, payload: actualPayload } as any));
+        metrics.recordCommand("file_upload");
+        logAudit({
+          timestamp: Date.now(),
+          username: (ws.data as any).username || "unknown",
+          ip: ws.data.ip || "unknown",
+          action: AuditAction.FILE_UPLOAD,
+          targetClientId: clientId,
+          details: JSON.stringify({ path: actualPayload.path || "", mode: "http_pull" }),
+          success: true,
+        });
+        break;
       default:
         break;
     }
@@ -152,27 +165,13 @@ export function handleFileBrowserViewerMessage(ws: ServerWebSocket<SocketData>, 
     case "file_upload": {
       const upload = normalizeFileUploadPayload(payload);
       if (!upload) return;
-      target.ws.send(encodeMessage({
-        type: "command",
-        commandType: "file_upload",
-        id: commandId,
-        payload: {
-          path: upload.path,
-          data: upload.data,
-          offset: upload.offset,
-          total: upload.total,
-          transferId: upload.transferId,
-        },
-      } as any));
-      metrics.recordCommand("file_upload");
-      logAudit({
-        timestamp: Date.now(),
-        username: (ws.data as any).username || "unknown",
-        ip: ws.data.ip || "unknown",
-        action: AuditAction.FILE_UPLOAD,
-        targetClientId: clientId,
-        details: JSON.stringify({ path: upload.path, size: upload.data.length, offset: upload.offset }),
-        success: true,
+      safeSendViewer(ws, {
+        type: "file_upload_result",
+        commandId,
+        transferId: upload.transferId,
+        path: upload.path,
+        ok: false,
+        error: "chunked uploads are disabled; refresh and retry",
       });
       break;
     }
