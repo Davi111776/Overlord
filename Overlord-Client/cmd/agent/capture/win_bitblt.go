@@ -123,9 +123,6 @@ func bitBlt(hdcDest uintptr, x, y, cx, cy int32, hdcSrc uintptr, x1, y1 int32, r
 }
 
 func bitBltWithFallback(hdcMem, hdcScreen uintptr, bounds image.Rectangle, w, h int) bool {
-	if bitBlt(hdcMem, 0, 0, int32(w), int32(h), hdcScreen, int32(bounds.Min.X), int32(bounds.Min.Y), SRCCOPY|CAPTUREBLT) {
-		return true
-	}
 	return bitBlt(hdcMem, 0, 0, int32(w), int32(h), hdcScreen, int32(bounds.Min.X), int32(bounds.Min.Y), SRCCOPY)
 }
 
