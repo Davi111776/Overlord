@@ -103,6 +103,62 @@ function getClientCard(clientId) {
   return document.querySelector(`article[data-id="${selectorId}"]`);
 }
 
+function openTagNoteEditor(clientId, currentTag, currentNote) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className =
+      "fixed inset-0 z-[10001] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4";
+    overlay.innerHTML = `
+      <div class="w-full max-w-xl rounded-xl border border-slate-700 bg-slate-900 p-5 shadow-2xl">
+        <h3 class="text-lg font-semibold text-slate-100">Custom Tag</h3>
+        <p id="tag-editor-client" class="mt-1 text-sm text-slate-400"></p>
+        <label class="mt-4 block text-sm text-slate-300">Tag</label>
+        <input id="tag-editor-input" type="text" class="mt-1 w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-600" placeholder="e.g. VIP, Priority, Finance">
+        <label class="mt-4 block text-sm text-slate-300">Note</label>
+        <textarea id="tag-editor-note" class="mt-1 min-h-[220px] w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-600" placeholder="Write as much as you need. No note length limit."></textarea>
+        <div class="mt-4 flex items-center justify-between gap-2">
+          <button id="tag-editor-clear" class="rounded-lg border border-rose-700 bg-rose-900/50 px-3 py-2 text-sm text-rose-100 hover:bg-rose-800">Clear</button>
+          <div class="flex items-center gap-2">
+            <button id="tag-editor-cancel" class="rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-100 hover:bg-slate-700">Cancel</button>
+            <button id="tag-editor-save" class="rounded-lg border border-blue-700 bg-blue-700 px-3 py-2 text-sm text-white hover:bg-blue-600">Save</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const clientLabel = overlay.querySelector("#tag-editor-client");
+    if (clientLabel) clientLabel.textContent = clientId;
+    const tagInput = overlay.querySelector("#tag-editor-input");
+    if (tagInput) tagInput.value = currentTag || "";
+    const textarea = overlay.querySelector("#tag-editor-note");
+    textarea.value = currentNote || "";
+
+    const closeWith = (result) => {
+      overlay.remove();
+      resolve(result);
+    };
+
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) closeWith(null);
+    });
+
+    overlay
+      .querySelector("#tag-editor-cancel")
+      ?.addEventListener("click", () => closeWith(null));
+    overlay
+      .querySelector("#tag-editor-clear")
+      ?.addEventListener("click", () => closeWith({ tag: "", note: "" }));
+    overlay.querySelector("#tag-editor-save")?.addEventListener("click", () => {
+      const tag = String(overlay.querySelector("#tag-editor-input")?.value || "").trim();
+      const note = String(overlay.querySelector("#tag-editor-note")?.value || "");
+      closeWith({ tag, note });
+    });
+
+    document.body.appendChild(overlay);
+    overlay.querySelector("#tag-editor-input")?.focus();
+  });
+}
+
 function isClientOnline(clientId) {
   return getClientCard(clientId)?.dataset.online === "true";
 }
@@ -575,6 +631,27 @@ window.setClientNickname = async (clientId, nickname) => {
   }
 };
 
+window.setClientTag = async (clientId, tag, note) => {
+  if (!clientId) return false;
+  try {
+    const res = await fetch(`/api/clients/${clientId}/tag`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tag: tag || "", note: note ?? "" }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || "Failed to update custom tag");
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error(err);
+    alert("Failed to update custom tag");
+    return false;
+  }
+};
+
 window.banClient = async (clientId) => {
   if (!clientId) return;
   if (!confirm(`Ban IP for ${clientId} and block future connections?`)) return;
@@ -766,6 +843,26 @@ menu.addEventListener("click", async (e) => {
 
     const trimmed = input.trim();
     const updated = await window.setClientNickname(contextCard, trimmed || null);
+    if (updated) {
+      setTimeout(() => loadWithOptions({ force: true }), 200);
+    }
+    closeMenu(clearContext);
+    return;
+  } else if (action === "set-custom-tag") {
+    const card = getClientCard(contextCard);
+    const currentTag = (card?.dataset.customTag || "").trim();
+    const currentNote = card?._customTagNote || "";
+    const result = await openTagNoteEditor(contextCard, currentTag, currentNote);
+    if (!result) {
+      closeMenu(clearContext);
+      return;
+    }
+
+    const updated = await window.setClientTag(
+      contextCard,
+      result.tag || "",
+      result.note || "",
+    );
     if (updated) {
       setTimeout(() => loadWithOptions({ force: true }), 200);
     }

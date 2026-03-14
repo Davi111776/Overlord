@@ -15,6 +15,37 @@ const updateBtn = document.getElementById("update-btn");
 const outputContainer = document.getElementById("output-container");
 const clearOutputBtn = document.getElementById("clear-output-btn");
 
+const tabUpload = document.getElementById("tab-upload");
+const tabUrl = document.getElementById("tab-url");
+const panelUpload = document.getElementById("panel-upload");
+const panelUrl = document.getElementById("panel-url");
+const urlInput = document.getElementById("url-input");
+const fetchUrlBtn = document.getElementById("fetch-url-btn");
+
+let activeTab = "upload";
+
+function switchTab(tab) {
+  activeTab = tab;
+  if (tab === "upload") {
+    tabUpload.classList.add("bg-slate-700", "text-slate-100");
+    tabUpload.classList.remove("text-slate-400");
+    tabUrl.classList.remove("bg-slate-700", "text-slate-100");
+    tabUrl.classList.add("text-slate-400");
+    panelUpload.classList.remove("hidden");
+    panelUrl.classList.add("hidden");
+  } else {
+    tabUrl.classList.add("bg-slate-700", "text-slate-100");
+    tabUrl.classList.remove("text-slate-400");
+    tabUpload.classList.remove("bg-slate-700", "text-slate-100");
+    tabUpload.classList.add("text-slate-400");
+    panelUrl.classList.remove("hidden");
+    panelUpload.classList.add("hidden");
+  }
+}
+
+tabUpload.addEventListener("click", () => switchTab("upload"));
+tabUrl.addEventListener("click", () => switchTab("url"));
+
 let allClients = [];
 let filteredClients = [];
 const selectedClients = new Set();
@@ -337,6 +368,64 @@ async function uploadFile(file) {
     setUploadStatus("Upload failed", "text-red-400");
   }
 }
+
+async function fetchFromUrl() {
+  const rawUrl = urlInput.value.trim();
+  if (!rawUrl) {
+    setUploadStatus("Please enter a URL", "text-red-400");
+    return;
+  }
+
+  setUploadStatus("Downloading from URL...", "text-blue-400");
+  fetchUrlBtn.disabled = true;
+  executeBtn.disabled = true;
+
+  try {
+    const res = await fetch("/api/deploy/fetch-url", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: rawUrl }),
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      setUploadStatus(text || "Fetch failed", "text-red-400");
+      return;
+    }
+
+    const data = await res.json();
+    if (!data.ok) {
+      setUploadStatus(data.error || "Fetch failed", "text-red-400");
+      return;
+    }
+
+    uploaded = data;
+    allowedOs = data.os || "unknown";
+    const sizeBytes = Number(data.size ?? 0);
+    setUploadStatus(`Fetched ${data.name} (${formatBytes(sizeBytes)})`, "text-emerald-400");
+    setOsBadge(allowedOs);
+
+    filterAndRenderClients();
+    Array.from(selectedClients).forEach((clientId) => {
+      const client = allClients.find((c) => c.id === clientId);
+      if (!client || !matchesClientOs(client.os || "", allowedOs)) {
+        selectedClients.delete(clientId);
+      }
+    });
+    renderClients();
+    updateSelectedCount();
+  } catch (error) {
+    console.error("URL fetch failed:", error);
+    setUploadStatus("Fetch failed", "text-red-400");
+  } finally {
+    fetchUrlBtn.disabled = false;
+  }
+}
+
+fetchUrlBtn.addEventListener("click", fetchFromUrl);
+urlInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") fetchFromUrl();
+});
 
 executeBtn.addEventListener("click", async () => {
   if (selectedClients.size === 0) {

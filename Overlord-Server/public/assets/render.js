@@ -206,10 +206,13 @@ export function createRenderer({
   function updateCard(card, client) {
     const oldCheckbox = card.querySelector(".client-checkbox");
     const wasChecked = oldCheckbox?.checked || false;
+    const wasTagNoteExpanded = card.dataset.tagNoteExpanded === "true";
 
     card.dataset.online = String(!!client.online);
     card.dataset.os = String(client.os || "").toLowerCase();
     card.dataset.nickname = String(client.nickname || "");
+    card.dataset.customTag = String(client.customTag || "");
+    card._customTagNote = String(client.customTagNote || "");
     const os = osBadge(client.os || "unknown");
     const arch = archBadge(client.arch || "");
     const ver = versionBadge(client.version || "");
@@ -217,7 +220,12 @@ export function createRenderer({
     const deviceId = shortId(client.id);
     const hwid = shortId(client.hwid || "");
     const nickname = String(client.nickname || "").trim();
+    const customTag = String(client.customTag || "").trim();
+    const customTagNote = String(client.customTagNote || "");
     const displayName = nickname || client.host || deviceId;
+    const hasTagNote = customTag.length > 0 && customTagNote.length > 0;
+    const isTagNoteExpanded = hasTagNote && wasTagNoteExpanded;
+    card.dataset.tagNoteExpanded = isTagNoteExpanded ? "true" : "false";
     card.className = `card rounded-xl border border-slate-800 bg-slate-900/70 p-4 shadow-lg ${client.online ? "" : "card-offline"} tone-${os.tone}`;
     const cardThumb = client.thumbnail
       ? (() => {
@@ -249,12 +257,14 @@ export function createRenderer({
             <span class="text-2xl">${countryToFlag(client.country)}</span>
             <span>${escapeHtml(displayName)}</span>
             ${nickname && client.host ? `<span class="pill pill-ghost text-xs"><i class="fa-solid fa-laptop"></i> ${escapeHtml(client.host)}</span>` : ""}
+            ${customTag ? `<button type="button" class="client-tag-toggle pill text-xs border border-amber-700/80 bg-amber-900/30 text-amber-200 ${hasTagNote ? "cursor-pointer hover:bg-amber-800/40" : "cursor-default opacity-90"}" ${hasTagNote ? `aria-expanded="${isTagNoteExpanded ? "true" : "false"}"` : `disabled aria-disabled="true"`}><i class="fa-solid fa-tag"></i> ${escapeHtml(customTag)} ${customTagNote ? `<i class="fa-regular fa-note-sticky"></i><i class="fa-solid ${isTagNoteExpanded ? "fa-chevron-up" : "fa-chevron-down"}"></i>` : ""}</button>` : ""}
             <span class="text-slate-300 text-lg font-semibold flex items-center gap-1"><i class="fa-solid fa-user"></i> ${escapeHtml(client.user || "unknown")}</span>
             <span class="pill ${client.online ? "pill-online" : "pill-offline"}">
               <i class="fa-solid fa-circle"></i>
               ${client.online ? "Online" : "Offline"}
             </span>
           </div>
+          ${hasTagNote ? `<div class="client-tag-note rounded-lg border border-amber-900/60 bg-amber-950/20 px-3 py-2 text-sm text-amber-100 whitespace-pre-wrap break-words max-h-48 overflow-auto ${isTagNoteExpanded ? "" : "hidden"}">${escapeHtml(customTagNote)}</div>` : ""}
           <div class="flex items-center gap-2 flex-wrap text-sm text-slate-300">
             <span class="pill pill-ghost"><i class="fa-regular fa-clock"></i> ${formatAgo(client.lastSeen)}</span>
             <span class="pill ${os.tone}"><i class="fa ${os.icon}"></i> ${os.label}</span>
@@ -312,6 +322,21 @@ export function createRenderer({
         }
       });
     }
+
+    card.querySelector(".client-tag-toggle")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const notePanel = card.querySelector(".client-tag-note");
+      if (!notePanel) return;
+      const expanded = notePanel.classList.toggle("hidden") === false;
+      card.dataset.tagNoteExpanded = expanded ? "true" : "false";
+      const tagToggle = card.querySelector(".client-tag-toggle");
+      tagToggle?.setAttribute("aria-expanded", expanded ? "true" : "false");
+      const chevron = tagToggle?.querySelector(".fa-chevron-up, .fa-chevron-down");
+      if (chevron) {
+        chevron.classList.toggle("fa-chevron-up", expanded);
+        chevron.classList.toggle("fa-chevron-down", !expanded);
+      }
+    });
 
     card
       .querySelector(".thumb-img")

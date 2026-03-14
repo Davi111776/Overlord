@@ -12,6 +12,7 @@ import {
   listBannedIps,
   listClients,
   setClientNickname,
+  setClientTag,
   setOnlineState,
   unbanIp,
 } from "../../db";
@@ -332,6 +333,69 @@ export async function handleClientRoutes(
     });
 
     return Response.json({ ok: true, nickname }, { headers: deps.CORS_HEADERS });
+  }
+
+  const clientTagMatch = url.pathname.match(/^\/api\/clients\/([^/]+)\/tag$/);
+  if (req.method === "PATCH" && clientTagMatch) {
+    const user = await authenticateRequest(req);
+    if (!user) return new Response("Unauthorized", { status: 401 });
+
+    try {
+      requirePermission(user, "clients:control");
+    } catch (error) {
+      if (error instanceof Response) return error;
+      return new Response("Forbidden", { status: 403 });
+    }
+
+    const targetId = clientTagMatch[1];
+    if (!canUserAccessClient(user.userId, user.role, targetId)) {
+      return new Response("Forbidden: Client access denied", { status: 403 });
+    }
+    if (!clientExists(targetId)) {
+      return Response.json({ error: "Client not found" }, { status: 404 });
+    }
+
+    let body: any = {};
+    try {
+      body = await req.json();
+    } catch {
+      return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+
+    const rawTag = typeof body?.tag === "string" ? body.tag : "";
+    const rawNote = typeof body?.note === "string" ? body.note : "";
+    const tag = rawTag.trim();
+    if (tag.length > 64) {
+      return Response.json(
+        { error: "Tag must be 64 characters or fewer" },
+        { status: 400 },
+      );
+    }
+
+    const normalizedTag = tag.length ? tag : null;
+    const note = normalizedTag ? rawNote : null;
+    const updated = setClientTag(targetId, normalizedTag, note);
+    if (!updated) {
+      return Response.json({ error: "Client not found" }, { status: 404 });
+    }
+
+    const ip = server.requestIP(req)?.address || "unknown";
+    logAudit({
+      timestamp: Date.now(),
+      username: user.username,
+      ip,
+      action: AuditAction.COMMAND,
+      targetClientId: targetId,
+      details: normalizedTag
+        ? `set_custom_tag:${normalizedTag} (note_len=${note?.length || 0})`
+        : "clear_custom_tag",
+      success: true,
+    });
+
+    return Response.json(
+      { ok: true, tag: normalizedTag, note: note ?? null },
+      { headers: deps.CORS_HEADERS },
+    );
   }
 
   if (req.method === "POST") {

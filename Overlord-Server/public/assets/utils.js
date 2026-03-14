@@ -15,6 +15,8 @@ export function digestData(data, { page, pageSize, searchTerm, sort }) {
       ping: c.pingMs,
       host: c.host,
       user: c.user,
+      customTag: c.customTag,
+      customTagNote: c.customTagNote,
       thumbnail: c.thumbnail,
       version: c.version,
       country: c.country,

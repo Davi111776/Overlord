@@ -21,6 +21,8 @@ db.run(`
     version TEXT,
     user TEXT,
     nickname TEXT,
+    custom_tag TEXT,
+    custom_tag_note TEXT,
     monitors INTEGER,
     country TEXT,
     last_seen INTEGER,
@@ -39,6 +41,12 @@ try {
 } catch {}
 try {
   db.run(`ALTER TABLE clients ADD COLUMN nickname TEXT`);
+} catch {}
+try {
+  db.run(`ALTER TABLE clients ADD COLUMN custom_tag TEXT`);
+} catch {}
+try {
+  db.run(`ALTER TABLE clients ADD COLUMN custom_tag_note TEXT`);
 } catch {}
 db.run(
   `CREATE INDEX IF NOT EXISTS idx_clients_online_last_seen ON clients(online, last_seen DESC);`,
@@ -133,8 +141,8 @@ export function upsertClientRow(
 ) {
   const now = partial.lastSeen ?? Date.now();
   db.run(
-    `INSERT INTO clients (id, hwid, role, ip, host, os, arch, version, user, monitors, country, last_seen, online, ping_ms)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO clients (id, hwid, role, ip, host, os, arch, version, user, nickname, custom_tag, custom_tag_note, monitors, country, last_seen, online, ping_ms)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
        hwid=COALESCE(excluded.hwid, clients.hwid),
        role=COALESCE(excluded.role, clients.role),
@@ -145,6 +153,8 @@ export function upsertClientRow(
        version=COALESCE(excluded.version, clients.version),
        user=COALESCE(excluded.user, clients.user),
       nickname=clients.nickname,
+      custom_tag=clients.custom_tag,
+      custom_tag_note=clients.custom_tag_note,
        monitors=COALESCE(excluded.monitors, clients.monitors),
        country=COALESCE(excluded.country, clients.country),
        last_seen=excluded.last_seen,
@@ -160,6 +170,9 @@ export function upsertClientRow(
     partial.arch ?? null,
     partial.version ?? null,
     partial.user ?? null,
+    partial.nickname ?? null,
+    partial.customTag ?? null,
+    partial.customTagNote ?? null,
     partial.monitors ?? null,
     partial.country ?? null,
     now,
@@ -207,6 +220,22 @@ export function setClientNickname(id: string, nickname: string | null): boolean 
 export function getClientNickname(id: string): string | null {
   const row = db.query<{ nickname: string | null }>(`SELECT nickname FROM clients WHERE id=?`).get(id);
   return row?.nickname ?? null;
+}
+
+export function setClientTag(
+  id: string,
+  tag: string | null,
+  note: string | null,
+): boolean {
+  const normalizedTag = tag && tag.trim() ? tag.trim() : null;
+  const normalizedNote = normalizedTag ? note ?? null : null;
+  const result = db.run(
+    `UPDATE clients SET custom_tag=?, custom_tag_note=? WHERE id=?`,
+    normalizedTag,
+    normalizedNote,
+    id,
+  );
+  return ((result as any)?.changes || 0) > 0;
 }
 
 export function getClientIp(id: string): string | null {
@@ -273,10 +302,10 @@ export function listClients(filters: ListFilters): ListResult {
 
   if (search) {
     where.push(
-      "(LOWER(COALESCE(host,'')) LIKE ? OR LOWER(COALESCE(user,'')) LIKE ? OR LOWER(COALESCE(nickname,'')) LIKE ? OR LOWER(id) LIKE ?)",
+      "(LOWER(COALESCE(host,'')) LIKE ? OR LOWER(COALESCE(user,'')) LIKE ? OR LOWER(COALESCE(nickname,'')) LIKE ? OR LOWER(COALESCE(custom_tag,'')) LIKE ? OR LOWER(COALESCE(custom_tag_note,'')) LIKE ? OR LOWER(id) LIKE ?)",
     );
     const needle = `%${search}%`;
-    params.push(needle, needle, needle, needle);
+    params.push(needle, needle, needle, needle, needle, needle);
   }
 
   if (statusFilter === "online") {
@@ -333,7 +362,7 @@ export function listClients(filters: ListFilters): ListResult {
 
   const rows = db
     .query<any>(
-      `SELECT id, hwid, role, host, os, arch, version, user, nickname, monitors, country, last_seen as lastSeen, online, ping_ms as pingMs
+      `SELECT id, hwid, role, host, os, arch, version, user, nickname, custom_tag as customTag, custom_tag_note as customTagNote, monitors, country, last_seen as lastSeen, online, ping_ms as pingMs
        FROM clients
        ${whereSql}
        ${orderBy}
@@ -352,6 +381,8 @@ export function listClients(filters: ListFilters): ListResult {
     version: c.version || "0",
     user: c.user,
     nickname: c.nickname || null,
+    customTag: c.customTag || null,
+    customTagNote: c.customTagNote ?? null,
     monitors: c.monitors,
     country: c.country || "ZZ",
     pingMs: c.pingMs ?? null,

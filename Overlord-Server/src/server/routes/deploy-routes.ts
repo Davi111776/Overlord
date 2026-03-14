@@ -81,6 +81,71 @@ export async function handleDeployRoutes(
     return Response.json({ ok: true, uploadId: id, os, name: filename, size: bytes.length });
   }
 
+  if (req.method === "POST" && url.pathname === "/api/deploy/fetch-url") {
+    const user = await authenticateRequest(req);
+    if (!user) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+    if (user.role !== "admin") {
+      return new Response("Forbidden: Admin access required", { status: 403 });
+    }
+
+    let body: any = {};
+    try {
+      body = await req.json();
+    } catch {
+      return new Response("Bad request", { status: 400 });
+    }
+
+    const fileUrl = typeof body?.url === "string" ? body.url.trim() : "";
+    if (!fileUrl) {
+      return new Response("Missing url", { status: 400 });
+    }
+
+    let parsed: URL;
+    try {
+      parsed = new URL(fileUrl);
+    } catch {
+      return new Response("Invalid URL", { status: 400 });
+    }
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return new Response("Only http and https URLs are allowed", { status: 400 });
+    }
+
+    const rawFilename = path.basename(parsed.pathname) || "download.bin";
+    const filename = rawFilename.replace(/[^a-zA-Z0-9._\-]/g, "_").substring(0, 128) || "download.bin";
+
+    let fileBytes: Uint8Array;
+    try {
+      const fetchRes = await fetch(fileUrl);
+      if (!fetchRes.ok) {
+        return new Response(`Remote fetch failed: ${fetchRes.status}`, { status: 502 });
+      }
+      fileBytes = new Uint8Array(await fetchRes.arrayBuffer());
+    } catch (err: any) {
+      return new Response(`Failed to fetch URL: ${err?.message || "network error"}`, { status: 502 });
+    }
+
+    const id = uuidv4();
+    await fs.mkdir(deps.DEPLOY_ROOT, { recursive: true });
+    const folder = path.join(deps.DEPLOY_ROOT, id);
+    await fs.mkdir(folder, { recursive: true });
+    const targetPath = path.join(folder, filename);
+    await fs.writeFile(targetPath, fileBytes);
+
+    const os = deps.detectUploadOs(filename, fileBytes);
+    const entry: DeployUpload = {
+      id,
+      path: targetPath,
+      name: filename,
+      size: fileBytes.length,
+      os,
+    };
+    deps.deployUploads.set(id, entry);
+
+    return Response.json({ ok: true, uploadId: id, os, name: filename, size: fileBytes.length });
+  }
+
   if (req.method === "POST" && url.pathname === "/api/deploy/run") {
     const user = await authenticateRequest(req);
     if (!user) {

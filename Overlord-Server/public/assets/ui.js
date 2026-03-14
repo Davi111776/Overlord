@@ -43,6 +43,7 @@ const MENU_GROUPS = [
       { label: "Ping",                  icon: "fa-solid fa-satellite-dish",    icolor: "text-slate-300", action: "ping" },
       { label: "Reconnect",             icon: "fa-solid fa-rotate",            icolor: "text-slate-300", action: "reconnect" },
       { label: "Set Nickname",          icon: "fa-solid fa-signature",         icolor: "text-slate-300", action: "set-nickname" },
+      { label: "Set Custom Tag",        icon: "fa-solid fa-tag",               icolor: "text-slate-300", action: "set-custom-tag" },
       { divider: true },
       { label: "Disconnect",            icon: "fa-solid fa-plug-circle-xmark", icolor: "text-red-400",   action: "disconnect" },
       { label: "Uninstall",             icon: "fa-solid fa-trash",             icolor: "text-red-300",   action: "uninstall" },

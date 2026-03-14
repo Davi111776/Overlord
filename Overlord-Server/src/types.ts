@@ -16,6 +16,8 @@ export type ClientInfo = {
   version?: string;
   user?: string;
   nickname?: string;
+  customTag?: string;
+  customTagNote?: string;
   monitors?: number;
   monitorInfo?: { width: number; height: number }[];
   country?: string;
