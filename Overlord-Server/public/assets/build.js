@@ -45,7 +45,11 @@ function getDefaultServerUrlPlaceholder(isRawList) {
 function updateServerUrlPlaceholder() {
   if (!serverUrlInput) return;
   const isRaw = rawServerListCheckbox?.checked ?? false;
-  serverUrlInput.placeholder = getDefaultServerUrlPlaceholder(isRaw);
+  const placeholder = getDefaultServerUrlPlaceholder(isRaw);
+  serverUrlInput.placeholder = placeholder;
+  if (!serverUrlInput.value.trim()) {
+    serverUrlInput.value = placeholder;
+  }
 }
 
 let isBuilding = false;
