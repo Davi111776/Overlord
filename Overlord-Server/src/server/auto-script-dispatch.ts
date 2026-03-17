@@ -28,6 +28,13 @@ export function dispatchAutoScriptsForConnection(
   }
 
   for (const script of scripts) {
+    if (script.osFilter.length > 0) {
+      const clientOs = (info.os || "").toLowerCase();
+      if (!script.osFilter.includes(clientOs)) {
+        continue;
+      }
+    }
+
     if (script.trigger === "on_connect_once") {
       if (hasAutoScriptRun(script.id, info.id)) {
         continue;

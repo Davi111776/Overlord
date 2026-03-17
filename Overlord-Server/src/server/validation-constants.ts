@@ -29,3 +29,11 @@ export const ALLOWED_PLATFORMS = new Set([
   "android-amd64",
   "android-armv7",
 ]);
+
+export const ALLOWED_OS_FILTERS = new Set([
+  "windows",
+  "linux",
+  "darwin",
+  "android",
+  "freebsd",
+]);

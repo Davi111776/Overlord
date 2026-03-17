@@ -14,6 +14,7 @@ const saveScriptBtn = document.getElementById("save-script-btn");
 const savedScriptsList = document.getElementById("saved-scripts-list");
 const autoTaskName = document.getElementById("auto-task-name");
 const autoTaskTrigger = document.getElementById("auto-task-trigger");
+const autoTaskOsCheckboxes = document.querySelectorAll("input[name='auto-task-os']");
 const autoTaskSaveBtn = document.getElementById("auto-task-save-btn");
 const autoTaskCancelBtn = document.getElementById("auto-task-cancel-btn");
 const autoTaskList = document.getElementById("auto-task-list");
@@ -351,6 +352,7 @@ function resetAutoTaskForm() {
   autoTaskEditingId = null;
   autoTaskName.value = "";
   autoTaskTrigger.value = "on_connect";
+  autoTaskOsCheckboxes.forEach((cb) => (cb.checked = false));
   autoTaskCancelBtn.classList.add("hidden");
   autoTaskSaveBtn.innerHTML = '<i class="fa-solid fa-bolt"></i> Save Auto Task';
 }
@@ -362,6 +364,10 @@ function setAutoTaskForm(task) {
   scriptType.value = task.scriptType || "powershell";
   setEditorMode(scriptType.value);
   setEditorValue(task.script || "");
+  const osFilter = Array.isArray(task.osFilter) ? task.osFilter : [];
+  autoTaskOsCheckboxes.forEach((cb) => {
+    cb.checked = osFilter.includes(cb.value);
+  });
   autoTaskCancelBtn.classList.remove("hidden");
   autoTaskSaveBtn.innerHTML = '<i class="fa-solid fa-pen"></i> Update Auto Task';
 }
@@ -393,7 +399,7 @@ function renderAutoTasks() {
         <div class="flex items-start justify-between gap-2 px-3 py-2 rounded-lg border border-slate-700 bg-slate-800/50">
           <div class="min-w-0">
             <div class="font-semibold text-slate-100 truncate">${escapeHtml(task.name)}</div>
-            <div class="text-xs text-slate-400">${escapeHtml(triggerLabel(task.trigger))} • ${escapeHtml(task.scriptType)}</div>
+            <div class="text-xs text-slate-400">${escapeHtml(triggerLabel(task.trigger))} • ${escapeHtml(task.scriptType)}${Array.isArray(task.osFilter) && task.osFilter.length > 0 ? ` • ${task.osFilter.map(escapeHtml).join(", ")}` : ""}</div>
           </div>
           <div class="flex items-center gap-2">
             <label class="flex items-center gap-1 text-xs text-slate-400">
@@ -469,6 +475,9 @@ async function saveAutoTask() {
   const trigger = autoTaskTrigger.value;
   const scriptTypeValue = scriptType.value;
   const script = getEditorValue();
+  const osFilter = Array.from(autoTaskOsCheckboxes)
+    .filter((cb) => cb.checked)
+    .map((cb) => cb.value);
 
   if (!name) {
     showToast("Please provide a task name", "warning", 3000);
@@ -481,7 +490,7 @@ async function saveAutoTask() {
 
   autoTaskSaveBtn.disabled = true;
   try {
-    const payload = { name, trigger, script, scriptType: scriptTypeValue };
+    const payload = { name, trigger, script, scriptType: scriptTypeValue, osFilter };
     const res = await fetch(autoTaskEditingId ? `/api/auto-scripts/${autoTaskEditingId}` : "/api/auto-scripts", {
       method: autoTaskEditingId ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
@@ -510,16 +519,6 @@ selectAllBtn.addEventListener("click", () => {
 clearSelectionBtn.addEventListener("click", () => {
   selectedClients.clear();
   renderClients();
-});
-
-document.querySelectorAll(".template-btn").forEach((btn) => {
-  btn.addEventListener("click", () => {
-    const script = btn.dataset.script;
-    const type = btn.dataset.type;
-    setEditorValue(script);
-    scriptType.value = type;
-    setEditorMode(type);
-  });
 });
 
 executeBtn.addEventListener("click", async () => {
@@ -607,10 +606,141 @@ scriptType?.addEventListener("change", () => {
   setEditorMode(scriptType.value);
 });
 
+const TEMPLATE_CATEGORIES = [
+  {
+    label: "Windows",
+    icon: "fa-brands fa-windows",
+    color: { bg: "bg-blue-900/40", border: "border-blue-700/60", text: "text-blue-300", hover: "hover:bg-blue-800/40", item: "bg-blue-900/20 border-blue-700/40 hover:bg-blue-800/30" },
+    templates: [
+      { label: "System Info", desc: "Get computer information", type: "powershell", script: "Get-ComputerInfo | Select-Object CsName, WindowsVersion, OsArchitecture, CsProcessors" },
+      { label: "Top Processes", desc: "Show top 10 processes by CPU", type: "powershell", script: "Get-Process | Sort-Object CPU -Descending | Select-Object -First 10 Name, CPU, WorkingSet" },
+      { label: "Network Info", desc: "List network adapters and IPs", type: "powershell", script: "Get-NetIPAddress | Where-Object {$_.AddressFamily -eq 'IPv4'} | Select-Object IPAddress, InterfaceAlias" },
+      { label: "AV Status Check", desc: "Query registered antivirus products", type: "powershell", script: "$av = Get-CimInstance -Namespace root/SecurityCenter2 -ClassName AntiVirusProduct -ErrorAction SilentlyContinue; if ($av) { $av | Select-Object displayName, pathToSignedProductExe, timestamp } else { Write-Output 'No AV product data returned from SecurityCenter2' }" },
+      { label: "Defender Health", desc: "Show Microsoft Defender status", type: "powershell", script: "Get-MpComputerStatus | Select-Object AMServiceEnabled, AntivirusEnabled, RealTimeProtectionEnabled, AntivirusSignatureLastUpdated" },
+      { label: "Running Services", desc: "List active Windows services", type: "powershell", script: "Get-Service | Where-Object {$_.Status -eq 'Running'} | Sort-Object DisplayName | Select-Object -First 30 Name, DisplayName, Status" },
+    ],
+  },
+  {
+    label: "Linux",
+    icon: "fa-brands fa-linux",
+    color: { bg: "bg-amber-900/40", border: "border-amber-700/60", text: "text-amber-300", hover: "hover:bg-amber-800/40", item: "bg-amber-900/20 border-amber-700/40 hover:bg-amber-800/30" },
+    templates: [
+      { label: "Disk Usage", desc: "Show mounted filesystem usage", type: "bash", script: "df -h" },
+      { label: "System Status", desc: "Show system status (Linux)", type: "bash", script: "top -bn1 | head -20" },
+      { label: "OS + Kernel Info", desc: "Show distro and kernel details", type: "bash", script: "uname -a; echo; lsb_release -a 2>/dev/null || cat /etc/os-release" },
+      { label: "Top Processes", desc: "Show top CPU-consuming processes", type: "bash", script: "ps aux --sort=-%cpu | head -15" },
+      { label: "Network Interfaces", desc: "List interfaces and assigned IPs", type: "bash", script: "ip addr 2>/dev/null || ifconfig" },
+      { label: "Failed Services", desc: "Show failing services if available", type: "bash", script: "systemctl --failed 2>/dev/null || service --status-all 2>/dev/null" },
+    ],
+  },
+  {
+    label: "macOS",
+    icon: "fa-brands fa-apple",
+    color: { bg: "bg-purple-900/40", border: "border-purple-700/60", text: "text-purple-300", hover: "hover:bg-purple-800/40", item: "bg-purple-900/20 border-purple-700/40 hover:bg-purple-800/30" },
+    templates: [
+      { label: "System Info", desc: "Show macOS version and software details", type: "bash", script: "sw_vers; echo; system_profiler SPSoftwareDataType 2>/dev/null | head -40" },
+      { label: "Top Processes", desc: "Show top CPU-consuming processes", type: "bash", script: "ps aux --sort=-%cpu | head -15" },
+      { label: "Network Interfaces", desc: "List interfaces and assigned IPs", type: "bash", script: "ip addr 2>/dev/null || ifconfig" },
+      { label: "Sudo Rules", desc: "Show sudo permissions for the current user", type: "bash", script: "sudo -l 2>/dev/null || echo 'No sudo access or sudo not available'" },
+      { label: "SSH Keys Hunt", desc: "Locate SSH private keys and authorized_keys files", type: "bash", script: "find /home /root /Users -maxdepth 4 \\( -name 'id_rsa' -o -name 'id_ed25519' -o -name 'id_ecdsa' -o -name 'authorized_keys' \\) 2>/dev/null" },
+    ],
+  },
+  {
+    label: "Red Team — Windows",
+    icon: "fa-solid fa-skull",
+    color: { bg: "bg-red-900/40", border: "border-red-700/60", text: "text-red-300", hover: "hover:bg-red-800/40", item: "bg-red-900/20 border-red-700/40 hover:bg-red-800/30" },
+    templates: [
+      { label: "Whoami + Privileges", desc: "Current user identity, groups and token privileges", type: "powershell", script: "whoami /all" },
+      { label: "Local Users & Admins", desc: "Enumerate local accounts and administrator group members", type: "powershell", script: "Get-LocalUser | Select-Object Name,Enabled,LastLogon | Format-Table -AutoSize; Write-Host '--- Local Admins ---'; Get-LocalGroupMember -Group Administrators | Select-Object Name,ObjectClass,PrincipalSource" },
+      { label: "Defender Exclusions", desc: "Show Defender exclusion paths, processes and extensions", type: "powershell", script: "$p = Get-MpPreference; 'Exclusion Paths:'; $p.ExclusionPath; ''; 'Exclusion Processes:'; $p.ExclusionProcess; ''; 'Exclusion Extensions:'; $p.ExclusionExtension" },
+      { label: "PS Language Mode", desc: "Check PowerShell CLM and script block logging policy", type: "powershell", script: "Write-Host 'Language Mode:' $ExecutionContext.SessionState.LanguageMode; Write-Host 'Script Block Logging:' (Get-ItemProperty 'HKLM:\\Software\\Policies\\Microsoft\\Windows\\PowerShell\\ScriptBlockLogging' -ErrorAction SilentlyContinue).EnableScriptBlockLogging" },
+      { label: "Credential Manager", desc: "List stored Windows credential manager entries", type: "powershell", script: "cmdkey /list" },
+      { label: "PS Command History", desc: "Show last 50 PowerShell history entries from PSReadLine", type: "powershell", script: "Get-Content (Get-PSReadLineOption).HistorySavePath -ErrorAction SilentlyContinue | Select-Object -Last 50" },
+      { label: "Scheduled Tasks (Non-MS)", desc: "List non-Microsoft scheduled tasks (persistence / privesc)", type: "powershell", script: "Get-ScheduledTask | Where-Object {$_.TaskPath -notlike '\\Microsoft*'} | Select-Object TaskName,TaskPath,State | Format-Table -AutoSize" },
+      { label: "Unquoted Service Paths", desc: "Find services with unquoted paths (privilege escalation vector)", type: "powershell", script: "Get-WmiObject Win32_Service | Where-Object {$_.PathName -like '* *' -and -not $_.PathName.StartsWith([char]34)} | Select-Object Name,PathName,State | Format-List" },
+    ],
+  },
+  {
+    label: "Red Team — Linux",
+    icon: "fa-solid fa-bug",
+    color: { bg: "bg-rose-900/40", border: "border-rose-700/60", text: "text-rose-300", hover: "hover:bg-rose-800/40", item: "bg-rose-900/20 border-rose-700/40 hover:bg-rose-800/30" },
+    templates: [
+      { label: "SUID Binaries", desc: "Find SUID binaries (potential privilege escalation)", type: "bash", script: "find / -perm -4000 -type f 2>/dev/null | sort" },
+      { label: "Sudo Rules", desc: "Show sudo permissions for the current user", type: "bash", script: "sudo -l 2>/dev/null || echo 'No sudo access or sudo not available'" },
+      { label: "Capabilities", desc: "Find binaries with elevated Linux capabilities", type: "bash", script: "getcap -r / 2>/dev/null || echo 'getcap not available'" },
+      { label: "SSH Keys Hunt", desc: "Locate SSH private keys and authorized_keys files", type: "bash", script: "find /home /root /Users -maxdepth 4 \\( -name 'id_rsa' -o -name 'id_ed25519' -o -name 'id_ecdsa' -o -name 'authorized_keys' \\) 2>/dev/null" },
+      { label: "Cron Jobs", desc: "Enumerate system-wide and user cron jobs", type: "bash", script: "echo '=== /etc/crontab ==='; cat /etc/crontab 2>/dev/null; echo '=== /etc/cron.d ==='; ls /etc/cron.d/ 2>/dev/null && cat /etc/cron.d/* 2>/dev/null; echo '=== User Crontabs ==='; ls /var/spool/cron/crontabs/ 2>/dev/null" },
+    ],
+  },
+];
+
+function renderTemplatePalette() {
+  const palette = document.getElementById("template-palette");
+  const searchInput = document.getElementById("template-search");
+  if (!palette) return;
+
+  function render(term) {
+    palette.innerHTML = "";
+    for (const cat of TEMPLATE_CATEGORIES) {
+      const c = cat.color;
+      const filtered = term
+        ? cat.templates.filter(
+            (t) =>
+              t.label.toLowerCase().includes(term) ||
+              t.desc.toLowerCase().includes(term),
+          )
+        : cat.templates;
+      if (term && filtered.length === 0) continue;
+
+      const section = document.createElement("div");
+      section.className = "mb-1";
+
+      const header = document.createElement("button");
+      header.className = `w-full flex items-center gap-2 px-3 py-2 rounded-lg ${c.bg} ${c.border} border text-sm font-semibold ${c.text} ${c.hover} transition-colors`;
+      header.innerHTML = `<i class="${cat.icon}"></i> ${escapeHtml(cat.label)} <span class="ml-auto text-xs opacity-60">${filtered.length}</span>`;
+      header.addEventListener("click", () => {
+        list.classList.toggle("hidden");
+      });
+      section.appendChild(header);
+
+      const list = document.createElement("div");
+      list.className = `flex flex-col gap-1 mt-1 pl-2${term ? "" : " hidden"}`;
+
+      for (const tmpl of filtered) {
+        const item = document.createElement("button");
+        item.className = `w-full text-left flex items-start gap-2 px-3 py-2 rounded-lg border ${c.item} transition-colors`;
+        item.innerHTML = `<div class="min-w-0"><div class="text-sm font-medium ${c.text} truncate">${escapeHtml(tmpl.label)}</div><div class="text-xs text-slate-500 truncate">${escapeHtml(tmpl.desc)}</div></div>`;
+        item.addEventListener("click", () => {
+          setEditorValue(tmpl.script);
+          scriptType.value = tmpl.type;
+          setEditorMode(tmpl.type);
+        });
+        list.appendChild(item);
+      }
+
+      section.appendChild(list);
+      palette.appendChild(section);
+    }
+  }
+
+  render("");
+
+  if (searchInput) {
+    searchInput.addEventListener("input", () => {
+      const term = searchInput.value.toLowerCase().trim();
+      render(term);
+      if (term) {
+        palette.querySelectorAll(".flex.flex-col.gap-1").forEach((l) => l.classList.remove("hidden"));
+      }
+    });
+  }
+}
+
 checkAuth();
 loadClients();
 renderSavedScripts();
 loadAutoTasks();
+renderTemplatePalette();
 
 if (window.CodeMirror && scriptEditor) {
   editorInstance = window.CodeMirror.fromTextArea(scriptEditor, {

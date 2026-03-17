@@ -123,6 +123,9 @@ db.run(`
 db.run(
   `CREATE INDEX IF NOT EXISTS idx_auto_scripts_trigger ON auto_scripts(trigger, enabled);`,
 );
+try {
+  db.run(`ALTER TABLE auto_scripts ADD COLUMN os_filter TEXT NOT NULL DEFAULT '[]'`);
+} catch { /* column already exists */ }
 
 db.run(`
   CREATE TABLE IF NOT EXISTS auto_script_runs (
@@ -482,11 +485,17 @@ export type AutoScript = {
   script: string;
   scriptType: string;
   enabled: boolean;
+  osFilter: string[];
   createdAt: number;
   updatedAt: number;
 };
 
 function mapAutoScriptRow(row: any): AutoScript {
+  let osFilter: string[] = [];
+  try {
+    const parsed = JSON.parse(row.os_filter || "[]");
+    osFilter = Array.isArray(parsed) ? parsed : [];
+  } catch { }
   return {
     id: row.id,
     name: row.name,
@@ -494,6 +503,7 @@ function mapAutoScriptRow(row: any): AutoScript {
     script: row.script,
     scriptType: row.script_type,
     enabled: row.enabled === 1,
+    osFilter,
     createdAt: Number(row.created_at) || 0,
     updatedAt: Number(row.updated_at) || 0,
   };
@@ -525,11 +535,12 @@ export function createAutoScript(input: {
   script: string;
   scriptType: string;
   enabled: boolean;
+  osFilter: string[];
 }): AutoScript {
   const now = Date.now();
   db.run(
-    `INSERT INTO auto_scripts (id, name, trigger, script, script_type, enabled, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO auto_scripts (id, name, trigger, script, script_type, enabled, os_filter, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ,
     input.id,
     input.name,
@@ -537,6 +548,7 @@ export function createAutoScript(input: {
     input.script,
     input.scriptType,
     input.enabled ? 1 : 0,
+    JSON.stringify(input.osFilter ?? []),
     now,
     now,
   );
@@ -551,6 +563,7 @@ export function updateAutoScript(
     script: string;
     scriptType: string;
     enabled: boolean;
+    osFilter: string[];
   }>,
 ): AutoScript | null {
   const current = getAutoScript(id);
@@ -562,16 +575,18 @@ export function updateAutoScript(
     script: input.script ?? current.script,
     scriptType: input.scriptType ?? current.scriptType,
     enabled: typeof input.enabled === "boolean" ? input.enabled : current.enabled,
+    osFilter: Array.isArray(input.osFilter) ? input.osFilter : current.osFilter,
   };
 
   db.run(
-    `UPDATE auto_scripts SET name=?, trigger=?, script=?, script_type=?, enabled=?, updated_at=? WHERE id=?`
+    `UPDATE auto_scripts SET name=?, trigger=?, script=?, script_type=?, enabled=?, os_filter=?, updated_at=? WHERE id=?`
     ,
     next.name,
     next.trigger,
     next.script,
     next.scriptType,
     next.enabled ? 1 : 0,
+    JSON.stringify(next.osFilter),
     Date.now(),
     id,
   );

@@ -7,7 +7,7 @@ import {
   updateAutoScript,
 } from "../../db";
 import { requirePermission } from "../../rbac";
-import { AUTO_SCRIPT_TRIGGERS, ALLOWED_SCRIPT_TYPES } from "../validation-constants";
+import { AUTO_SCRIPT_TRIGGERS, ALLOWED_SCRIPT_TYPES, ALLOWED_OS_FILTERS } from "../validation-constants";
 import { v4 as uuidv4 } from "uuid";
 
 export async function handleAutoScriptsRoutes(
@@ -59,6 +59,8 @@ export async function handleAutoScriptsRoutes(
     const script = String(body?.script || "");
     const scriptTypeRaw = String(body?.scriptType || "powershell").trim();
     const enabled = typeof body?.enabled === "boolean" ? body.enabled : true;
+    const osFilterRaw = Array.isArray(body?.osFilter) ? body.osFilter : [];
+    const osFilter = osFilterRaw.filter((v: unknown) => typeof v === "string" && ALLOWED_OS_FILTERS.has(v));
 
     if (!name) {
       return Response.json({ error: "Name is required" }, { status: 400 });
@@ -81,6 +83,7 @@ export async function handleAutoScriptsRoutes(
       script,
       scriptType,
       enabled,
+      osFilter,
     });
 
     return Response.json({ ok: true, item });
@@ -121,12 +124,18 @@ export async function handleAutoScriptsRoutes(
         : "powershell"
       : undefined;
 
+    const osFilterRaw = Array.isArray(body?.osFilter) ? body.osFilter : undefined;
+    const osFilter = osFilterRaw
+      ? osFilterRaw.filter((v: unknown) => typeof v === "string" && ALLOWED_OS_FILTERS.has(v))
+      : undefined;
+
     const updated = updateAutoScript(autoScriptMatch[1], {
       name: body?.name ? String(body.name).trim() : undefined,
       trigger: triggerRaw as AutoScriptTrigger | undefined,
       script: body?.script ? String(body.script) : undefined,
       scriptType,
       enabled: typeof body?.enabled === "boolean" ? body.enabled : undefined,
+      osFilter,
     });
 
     if (!updated) {
